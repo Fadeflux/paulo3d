@@ -228,10 +228,11 @@ test('vente sur deux lots : le plus ancien part en premier', async () => {
 
 test('survente refusée, sans rien écrire', async () => {
   const saleId = randomUUID();
-  const code = await pgCode(asUser(admin, A, (c) => rpc(c, 'p3d_record_sale', {
+  const err = await asUser(admin, A, (c) => rpc(c, 'p3d_record_sale', {
     id: saleId, items: [{ template_id: ids.t1, item_name: 'Support Manette Universel', quantity: 50, unit_price: 10 }],
-  })));
-  assert.equal(code, 'P3D01');
+  })).then(() => null, (e) => e);
+  assert.equal(err && err.code, 'P3D01');
+  assert.match(err.message, /^Stock insuffisant pour « Support Manette Universel » : il manque \d+ pièces\.$/);
   const n = await asUser(admin, A, (c) => one(c, 'select count(*)::int as n from public.sales where id = $1', [saleId]));
   assert.equal(n.n, 0);
 });
@@ -282,6 +283,9 @@ test('ajout de stock existant et retrait (casse)', async () => {
   });
   const code = await pgCode(asUser(admin, A, (c) => rpc(c, 'p3d_adjust_stock', { id: randomUUID(), template_id: ids.t1, item_name: 'x', quantity: 999 })));
   assert.equal(code, 'P3D01');
+  const lot = await asUser(admin, A, (c) => one(c, 'select coalesce(sum(qty_available), 0)::int as n from public.production_stock where template_id = $1', [ids.t1]));
+  const oneMissing = await asUser(admin, A, (c) => rpc(c, 'p3d_adjust_stock', { id: randomUUID(), template_id: ids.t1, item_name: 'x', quantity: lot.n + 1 })).then(() => null, (e) => e);
+  assert.match(oneMissing.message, /il manque 1 pièce\.$/, 'singulier quand il manque une seule pièce');
 });
 
 test('bobine avec historique : suppression refusée, archivage possible', async () => {
@@ -330,6 +334,200 @@ test('sécurité : sans connexion (anon) tout est refusé', async () => {
   for (const q of ['select * from public.spools', 'select * from public.sales', "select public.p3d_weigh_spool('{}'::jsonb)", "select public.p3d_record_sale('{}'::jsonb)"]) {
     const code = await pgCode(asUser(admin, null, (c) => c.query(q), { role: 'anon' }));
     assert.equal(code, '42501', q);
+  }
+});
+
+test('heure de modification distincte pour chaque version d’une ligne (même transaction)', async () => {
+  const r = await asUser(admin, A, async (c) => {
+    const tpl = (await one(c, "insert into public.templates (name, materials) values ('Horodatage', '[]') returning id")).id;
+    await rpc(c, 'p3d_add_stock', { id: randomUUID(), template_id: tpl, item_name: 'Horodatage', unit_cost: 1, quantity: 5 });
+    const sale = { id: randomUUID(), items: [{ id: randomUUID(), template_id: tpl, item_name: 'Horodatage', quantity: 1, unit_price: 9 }, { id: randomUUID(), template_id: tpl, item_name: 'Horodatage', quantity: 1, unit_price: 9 }] };
+    await rpc(c, 'p3d_record_sale', sale);
+    return one(c, `select (s.updated_at > s.created_at) as sale_later,
+                          bool_and(i.updated_at > i.created_at) as items_later
+                     from public.sales s join public.sale_items i on i.sale_id = s.id where s.id = $1 group by s.id`, [sale.id]);
+  });
+  assert.equal(r.sale_later, true, 'la vente complétée doit être plus récente que la vente créée');
+  assert.equal(r.items_later, true);
+});
+
+test('une vente supprimée ne revient pas si l’action est rejouée plus tard', async () => {
+  await asUser(admin, A, async (c) => {
+    const tpl = (await one(c, "insert into public.templates (name, materials) values ('Revenant', '[]') returning id")).id;
+    await rpc(c, 'p3d_add_stock', { id: randomUUID(), template_id: tpl, item_name: 'Revenant', unit_cost: 2, quantity: 3 });
+    const sale = { id: randomUUID(), items: [{ id: randomUUID(), template_id: tpl, item_name: 'Revenant', quantity: 2, unit_price: 10 }] };
+    await rpc(c, 'p3d_record_sale', sale);
+    await rpc(c, 'p3d_delete_sale', sale.id);
+    const replay = await rpc(c, 'p3d_record_sale', sale);
+    assert.equal(replay.tombstoned, true);
+    const n = await one(c, 'select count(*)::int as n from public.sales where id = $1', [sale.id]);
+    assert.equal(n.n, 0);
+    const stock = await one(c, 'select sum(qty_available)::int as n from public.production_stock where template_id = $1', [tpl]);
+    assert.equal(stock.n, 3, 'le stock n’est pas repris une deuxième fois');
+    const prod = productionPayload({ qty: 1 });
+    prod.template_id = tpl;
+    prod.machine_id = null;
+    prod.consumption = [];
+    for (const k of ['material_cost', 'purge_cost', 'hardware_cost', 'machine_cost', 'labor_cost', 'total_cost', 'unit_cost', 'grams_total', 'purge_g_total']) prod[k] = 0;
+    await rpc(c, 'p3d_launch_production', prod);
+    await rpc(c, 'p3d_delete_production', prod.id);
+    const again = await rpc(c, 'p3d_launch_production', prod);
+    assert.equal(again.tombstoned, true);
+  });
+});
+
+test('une bobine supprimée ne revient pas par un enregistrement rejoué', async () => {
+  await asUser(admin, A, async (c) => {
+    const id = randomUUID();
+    const up = "insert into public.spools (id, brand, material, price) values ($1, 'Fantôme', 'PLA', 5) on conflict (id) do update set price = excluded.price";
+    await c.query(up, [id]);
+    await c.query('delete from public.spools where id = $1', [id]);
+    const res = await c.query(up, [id]);
+    assert.equal(res.rowCount, 0);
+    const n = await one(c, 'select count(*)::int as n from public.spools where id = $1', [id]);
+    assert.equal(n.n, 0);
+  });
+  const seenByB = await asUser(admin, B, (c) => one(c, 'select count(*)::int as n from public.deleted_rows'));
+  assert.equal(seenByB.n, 0, 'le registre des suppressions est cloisonné par compte');
+  const code = await pgCode(asUser(admin, null, (c) => c.query('select * from public.deleted_rows'), { role: 'anon' }));
+  assert.equal(code, '42501');
+});
+
+// Transaction ouverte « comme PostgREST », laissée ouverte pour simuler deux appareils au même instant
+async function beginAs(client, uid) {
+  await client.query('begin');
+  await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: uid, role: 'authenticated' })]);
+  await client.query('set local role authenticated');
+}
+const zeroCosts = (pp) => {
+  for (const k of ['material_cost', 'purge_cost', 'hardware_cost', 'machine_cost', 'labor_cost', 'total_cost', 'unit_cost', 'grams_total', 'purge_g_total']) pp[k] = 0;
+  pp.consumption = [];
+  return pp;
+};
+
+test('retrait de stock rejoué après la suppression de sa production : pas refait ailleurs', async () => {
+  await asUser(admin, A, async (c) => {
+    const tpl = (await one(c, "insert into public.templates (name, materials) values ('Casse rejouée', '[]') returning id")).id;
+    const mk = (qty, at) => zeroCosts({ ...productionPayload({ qty, at }), template_id: tpl, item_name: 'Casse rejouée', machine_id: null });
+    const p1 = mk(1, '2026-01-01T10:00:00Z');
+    const p2 = mk(4, '2026-01-02T10:00:00Z');
+    await rpc(c, 'p3d_launch_production', p1);
+    await rpc(c, 'p3d_launch_production', p2);
+    const adj = { id: randomUUID(), template_id: tpl, item_name: 'Casse rejouée', quantity: 1, reason: 'casse' };
+    const first = await rpc(c, 'p3d_adjust_stock', adj);
+    assert.equal(first.production_stock[0].production_id, p1.id, 'pris dans le lot le plus ancien');
+    await rpc(c, 'p3d_delete_production', p1.id);
+    const replay = await rpc(c, 'p3d_adjust_stock', adj);
+    assert.equal(replay.tombstoned, true);
+    const lot2 = await one(c, 'select qty_available from public.production_stock where production_id = $1', [p2.id]);
+    assert.equal(lot2.qty_available, 4, 'le lot suivant n’est pas entamé par le rejeu');
+  });
+});
+
+test('bobine supprimée PENDANT un enregistrement de la même bobine (deux appareils) : elle ne revient pas', async () => {
+  const id = randomUUID();
+  await asUser(admin, A, (c) => c.query("insert into public.spools (id, brand, material, price) values ($1, 'Course', 'PLA', 5)", [id]));
+  await beginAs(admin, A);
+  await admin.query('delete from public.spools where id = $1', [id]);
+  await beginAs(other, A);
+  let settled = false;
+  const pending = other.query("insert into public.spools (id, brand, material, price) values ($1, 'Course', 'PLA', 9) on conflict (id) do update set price = excluded.price", [id])
+    .then(() => null, (e) => e)
+    .finally(() => { settled = true; });
+  await new Promise((r) => setTimeout(r, 400));
+  assert.equal(settled, false, 'l’enregistrement doit attendre la suppression en cours (sinon le test ne mesure rien)');
+  await admin.query('commit');
+  const err = await pending;
+  await other.query(err ? 'rollback' : 'commit');
+  assert.equal(err && err.code, 'P3D10');
+  const n = await asUser(admin, A, (c) => one(c, 'select count(*)::int as n from public.spools where id = $1', [id]));
+  assert.equal(n.n, 0, 'la bobine supprimée ne revient pas');
+});
+
+test('vente rejouée pendant sa suppression sur un autre appareil : stock repris une seule fois', async () => {
+  const sale = { id: randomUUID() };
+  let tpl;
+  await asUser(admin, A, async (c) => {
+    tpl = (await one(c, "insert into public.templates (name, materials) values ('Double appareil', '[]') returning id")).id;
+    await rpc(c, 'p3d_add_stock', { id: randomUUID(), template_id: tpl, item_name: 'Double appareil', unit_cost: 2, quantity: 3 });
+    sale.items = [{ id: randomUUID(), template_id: tpl, item_name: 'Double appareil', quantity: 2, unit_price: 10 }];
+    await rpc(c, 'p3d_record_sale', sale);
+  });
+  await beginAs(admin, A);
+  await admin.query('select public.p3d_delete_sale($1)', [sale.id]);
+  await beginAs(other, A);
+  const replay = (await other.query('select public.p3d_record_sale($1) as r', [sale])).rows[0].r;
+  await other.query('commit');
+  await admin.query('commit');
+  assert.equal(replay.sales.length, 1, 'la vente encore visible est renvoyée telle quelle, sans être refaite');
+  const after = await asUser(admin, A, async (c) => ({
+    sales: (await one(c, 'select count(*)::int as n from public.sales where id = $1', [sale.id])).n,
+    stock: (await one(c, 'select sum(qty_available)::int as n from public.production_stock where template_id = $1', [tpl])).n,
+    again: (await rpc(c, 'p3d_record_sale', sale)).tombstoned,
+  }));
+  assert.deepEqual(after, { sales: 0, stock: 3, again: true });
+});
+
+test('action hors-ligne qui vise un template, une machine ou une bobine supprimés entre-temps', async () => {
+  await asUser(admin, A, async (c) => {
+    const tpl = (await one(c, "insert into public.templates (name, materials) values ('Parent disparu', '[]') returning id")).id;
+    const mac = (await one(c, "insert into public.machines (name) values ('Machine disparue') returning id")).id;
+    const sp = (await one(c, "insert into public.spools (brand, material, price) values ('Sans historique', 'PLA', 10) returning id")).id;
+    await c.query('delete from public.templates where id = $1', [tpl]);
+    await c.query('delete from public.machines where id = $1', [mac]);
+    await c.query('delete from public.spools where id = $1', [sp]);
+
+    const prod = zeroCosts({ ...productionPayload({ qty: 2 }), template_id: tpl, machine_id: mac, item_name: 'Parent disparu' });
+    prod.consumption = [{ spool_id: sp, grams: 12, cost_per_g: 0.01, movement_id: randomUUID() }];
+    const r = await rpc(c, 'p3d_launch_production', prod);
+    assert.equal(r.productions[0].template_id, null);
+    assert.equal(r.productions[0].machine_id, null);
+    assert.equal(r.spool_movements.length, 0, 'rien à déduire d’une bobine supprimée');
+    assert.equal(r.production_stock[0].quantity, 2);
+
+    const sale = await rpc(c, 'p3d_record_sale', { id: randomUUID(), items: [{ id: randomUUID(), template_id: tpl, item_name: 'Parent disparu', quantity: 1, unit_price: 5 }] });
+    assert.equal(sale.sale_allocations.length, 1, 'le stock est retrouvé par son nom');
+
+    const weigh = await rpc(c, 'p3d_weigh_spool', { id: randomUUID(), spool_id: sp, measured_g: 100 });
+    assert.equal(weigh.tombstoned, true);
+  });
+});
+
+test('registre des suppressions : un compte ne peut pas y écrire lui-même', async () => {
+  const code = await pgCode(asUser(admin, A, (c) => c.query("insert into public.deleted_rows (owner_id, table_name, row_id) values ($1, 'spools', $2)", [A, ids.s2])));
+  assert.equal(code, '42501');
+});
+
+test('suppression du compte par Supabase Auth (rôle sans droits sur les tables) : tout part', async () => {
+  const C = randomUUID();
+  await admin.query('insert into auth.users (id, email) values ($1, $2)', [C, 'c@test.local']);
+  await asUser(admin, C, async (c) => {
+    await c.query('insert into public.settings default values');
+    const mac = (await one(c, "insert into public.machines (name, is_default) values ('P1S', true) returning id")).id;
+    const sp = (await one(c, "insert into public.spools (brand, material, price) values ('Bambu', 'PLA', 20) returning id")).id;
+    const tpl = (await one(c, "insert into public.templates (name, materials, machine_id) values ('Compte supprimé', '[]', $1) returning id", [mac])).id;
+    await rpc(c, 'p3d_weigh_spool', { id: randomUUID(), spool_id: sp, measured_g: 800 });
+    const prod = zeroCosts({ ...productionPayload({ qty: 3 }), template_id: tpl, machine_id: mac, item_name: 'Compte supprimé' });
+    prod.consumption = [{ spool_id: sp, grams: 30, cost_per_g: 0.02, movement_id: randomUUID() }];
+    await rpc(c, 'p3d_launch_production', prod);
+    await rpc(c, 'p3d_adjust_stock', { id: randomUUID(), template_id: tpl, item_name: 'Compte supprimé', quantity: 1 });
+    await rpc(c, 'p3d_record_sale', { id: randomUUID(), items: [{ id: randomUUID(), template_id: tpl, item_name: 'Compte supprimé', quantity: 1, unit_price: 9 }] });
+  });
+  await admin.query('do $$ begin create role p3d_auth_admin_test nologin noinherit; exception when duplicate_object then null; end $$');
+  await admin.query('grant usage on schema auth to p3d_auth_admin_test');
+  await admin.query('grant select, delete on auth.users to p3d_auth_admin_test');
+  await admin.query('begin');
+  try {
+    await admin.query('set local role p3d_auth_admin_test');
+    await admin.query('delete from auth.users where id = $1', [C]);
+    await admin.query('commit');
+  } catch (e) {
+    await admin.query('rollback');
+    throw e;
+  }
+  for (const t of ['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements', 'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']) {
+    const r = await one(admin, `select count(*)::int as n from public.${t} where owner_id = $1`, [C]);
+    assert.equal(r.n, 0, `${t} vidée pour le compte supprimé`);
   }
 });
 

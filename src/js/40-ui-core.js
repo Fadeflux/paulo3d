@@ -15,9 +15,22 @@ const TONES = {
 };
 
 /* ---------- composants ---------- */
-function btn(label, { variant = 'secondary', icon: ic, action, size = 'md', attrs = '', type = 'button', cls = '', title } = {}) {
+// Attributs supplémentaires : TOUJOURS un objet, valeurs échappées. Ex. { 'data-id': id, autofocus: true }
+function attrList(obj) {
+  if (!obj) return raw('');
+  if (typeof obj !== 'object') throw new Error('attrs doit être un objet { nom: valeur }');
+  const out = [];
+  for (const [k, v] of Object.entries(obj)) {
+    if (!/^[a-z][a-z0-9-]*$/i.test(k)) throw new Error(`nom d'attribut refusé : ${k}`);
+    if (v === false || v === null || v === undefined) continue;
+    out.push(v === true ? k : `${k}="${esc(v)}"`);
+  }
+  return raw(out.join(' '));
+}
+
+function btn(label, { variant = 'secondary', icon: ic, action, size = 'md', attrs = null, type = 'button', cls = '', title } = {}) {
   const sizes = { sm: 'h-9 px-3 text-[13px] rounded-lg', md: 'h-11 px-4 text-sm rounded-xl', lg: 'h-12 px-5 text-[15px] rounded-xl', icon: 'h-10 w-10 rounded-xl' };
-  return html`<button type="${type}" class="btn btn-${variant} ${sizes[size]} ${cls}" ${action ? raw(`data-action="${esc(action)}"`) : ''} ${title ? raw(`title="${esc(title)}" aria-label="${esc(title)}"`) : ''} ${raw(attrs)}>${ic ? icon(ic, size === 'sm' ? 'w-4 h-4' : 'w-[18px] h-[18px]') : ''}${label ? html`<span>${label}</span>` : ''}</button>`;
+  return html`<button type="${type}" class="btn btn-${variant} ${sizes[size]} ${cls}" ${action ? raw(`data-action="${esc(action)}"`) : ''} ${title ? raw(`title="${esc(title)}" aria-label="${esc(title)}"`) : ''} ${attrList(attrs)}>${ic ? icon(ic, size === 'sm' ? 'w-4 h-4' : 'w-[18px] h-[18px]') : ''}${label ? html`<span>${label}</span>` : ''}</button>`;
 }
 
 function badge(text, tone = 'off', { dot = false, cls = '' } = {}) {
@@ -37,21 +50,25 @@ function field(label, control, { hint, cls = '', id } = {}) {
   </label>`;
 }
 
-function inputNum(name, value, { suffix, placeholder = '0', step = 'any', min, cls = '', attrs = '', inputmode = 'decimal' } = {}) {
-  const v = value === null || value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value)) ? '' : String(value).replace('.', ',');
+function inputNum(name, value, { suffix, placeholder = '0', step = 'any', min, cls = '', attrs = null, inputmode = 'decimal' } = {}) {
+  let v = value === null || value === undefined || value === '' || (typeof value === 'number' && !Number.isFinite(value)) ? '' : String(value).replace('.', ',');
+  // Montants en euros : « 22,50 » et non « 22,5 », sans jamais arrondir la valeur. Les nombres entiers
+  // (dont 0) restent tels quels : « 0,00 » + une touche tapée au bout donnerait « 0,002 », soit 0.
+  if (/^€/.test(suffix || '') && /^-?\d+,\d$/.test(v)) v = `${v}0`;
   return html`<div class="relative ${cls}">
-    <input class="input ${suffix ? 'pr-12' : ''} tabular-nums" name="${name}" inputmode="${inputmode}" autocomplete="off" placeholder="${placeholder}" value="${v}" data-num ${min !== undefined ? raw(`data-min="${esc(min)}"`) : ''} data-step="${step}" ${raw(attrs)}/>
+    <input class="input ${suffix ? 'pr-12' : ''} tabular-nums" name="${name}" inputmode="${inputmode}" autocomplete="off" placeholder="${placeholder}" value="${v}" data-num ${min !== undefined ? raw(`data-min="${esc(min)}"`) : ''} data-step="${step}" ${attrList(attrs)}/>
     ${suffix ? html`<span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-[13px] text-slate-500">${suffix}</span>` : ''}
   </div>`;
 }
 
-function inputText(name, value, { placeholder = '', attrs = '', cls = '', type = 'text', maxlength = 120 } = {}) {
-  return html`<input class="input ${cls}" type="${type}" name="${name}" value="${value ?? ''}" placeholder="${placeholder}" maxlength="${maxlength}" autocomplete="off" ${raw(attrs)}/>`;
+function inputText(name, value, { placeholder = '', attrs = null, cls = '', type = 'text', maxlength = 120 } = {}) {
+  const extra = { autocomplete: 'off', ...(attrs || {}) };
+  return html`<input class="input ${cls}" type="${type}" name="${name}" value="${value ?? ''}" placeholder="${placeholder}" maxlength="${maxlength}" ${attrList(extra)}/>`;
 }
 
-function selectInput(name, options, value, { attrs = '', cls = '' } = {}) {
+function selectInput(name, options, value, { attrs = null, cls = '' } = {}) {
   return html`<div class="relative ${cls}">
-    <select class="input appearance-none pr-10" name="${name}" ${raw(attrs)}>
+    <select class="input appearance-none pr-10" name="${name}" ${attrList(attrs)}>
       ${options.map((o) => html`<option value="${o.value ?? ''}" ${String(o.value ?? '') === String(value ?? '') ? raw('selected') : ''} ${o.disabled ? raw('disabled') : ''}>${o.label}</option>`)}
     </select>
     <span class="pointer-events-none absolute inset-y-0 right-3 flex items-center text-slate-500">${icon('ChevronDown', 'w-4 h-4')}</span>
@@ -194,6 +211,10 @@ function toast(message, { tone = 'ok', title = '', timeout = 4200 } = {}) {
 // Annonce honnête du résultat d'une action
 async function runOp(type, payload, { success = 'Enregistré' } = {}) {
   const res = await Sync.enqueue(type, payload);
+  if (res.state === 'confirmed' && res.tombstoned) {
+    toast('Cet élément avait déjà été supprimé sur un autre appareil : rien n’a été enregistré.', { tone: 'warn', title: 'Action ignorée' });
+    return res;
+  }
   if (res.state === 'confirmed') {
     toast(success, { tone: 'ok' });
     return res;
@@ -427,7 +448,7 @@ const App = {
         <header class="sticky top-0 z-20 border-b border-white/[0.06] bg-ink-950/75 backdrop-blur-xl pt-[env(safe-area-inset-top)] lg:border-none lg:bg-transparent lg:backdrop-blur-0">
           <div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 lg:h-16 lg:px-8">
             <a href="#/" class="lg:hidden">${logoMark(34)}</a>
-            <div class="min-w-0 flex-1 truncate font-display text-[17px] font-semibold text-slate-100 lg:hidden" id="top-title"></div>
+            <div class="min-w-0 flex-1 truncate font-display text-[17px] font-semibold text-slate-100 max-[359px]:invisible lg:hidden" id="top-title"></div>
             <div class="hidden flex-1 lg:block"></div>
             <div id="sync-pill"></div>
             ${btn('', { variant: 'primary', size: 'icon', icon: 'Plus', action: 'quick', title: 'Nouvelle action', cls: 'lg:hidden' })}
@@ -511,6 +532,9 @@ function renderBanner() {
   if (Store.volatile) {
     items.push(html`<div class="flex items-center gap-2 bg-amber-400/10 px-4 py-2 text-[12px] text-amber-200">${icon('TriangleAlert', 'w-4 h-4 shrink-0')}<span>Ce navigateur refuse la mémoire locale : sans réseau, les actions ne seront pas gardées si tu fermes l'appli.</span></div>`);
   }
+  if (Store.persistError) {
+    items.push(html`<div class="flex items-center gap-2 bg-amber-400/10 px-4 py-2 text-[12px] text-amber-200">${icon('HardDriveDownload', 'w-4 h-4 shrink-0')}<span>La copie hors-ligne de cet appareil n'a pas pu être enregistrée (mémoire pleine ?). Les données en ligne ne sont pas touchées.</span></div>`);
+  }
   if (Sync.state.needsLogin) {
     items.push(html`<div class="flex items-center gap-2 bg-rose-500/10 px-4 py-2 text-[12px] text-rose-200">${icon('KeyRound', 'w-4 h-4 shrink-0')}<span>Ta session a expiré : reconnecte-toi pour envoyer les actions en attente (elles sont gardées).</span><button data-action="relogin" class="ml-auto shrink-0 font-semibold underline">Se reconnecter</button></div>`);
   }
@@ -552,7 +576,7 @@ Actions['sync-panel'] = () => {
               <div class="text-sm font-medium text-slate-100">${opLabel(op)}</div>
               <div class="mt-0.5 text-[12px] text-rose-200">${op.error ? op.error.message : ''}</div>
               <div class="mt-1 text-[11px] text-slate-500">Saisie ${fmtRelative(op.created_at)}</div>
-              <div class="mt-2 flex gap-2">${btn('Réessayer', { size: 'sm', icon: 'RefreshCw', action: 'retry', attrs: `data-op="${op.id}"` })}${btn('Abandonner', { size: 'sm', variant: 'danger', icon: 'Trash2', action: 'discard', attrs: `data-op="${op.id}"` })}</div>
+              <div class="mt-2 flex gap-2">${btn('Réessayer', { size: 'sm', icon: 'RefreshCw', action: 'retry', attrs: { 'data-op': op.id } })}${btn('Abandonner', { size: 'sm', variant: 'danger', icon: 'Trash2', action: 'discard', attrs: { 'data-op': op.id } })}</div>
             </div>`)}</div>` : ''}
           <h3 class="mb-2 mt-5 text-sm font-semibold text-slate-200">En attente d'envoi (${pending.length})</h3>
           ${pending.length ? html`<div class="divide-y divide-white/[0.06] rounded-xl border border-white/[0.06]">${pending.map((op) => html`<div class="flex items-center justify-between gap-3 px-3 py-2.5 text-sm"><span class="truncate text-slate-200">${opLabel(op)}</span><span class="shrink-0 text-[11px] text-slate-500">${op.status === 'sending' ? 'envoi…' : fmtRelative(op.created_at)}</span></div>`)}</div>`

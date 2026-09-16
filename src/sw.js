@@ -2,7 +2,7 @@
    Les données ne passent JAMAIS par ici : elles sont gérées par l'appli (IndexedDB + Supabase). */
 const VERSION = '__APP_VERSION__';
 const SHELL_CACHE = `p3d-shell-${VERSION}`;
-const CDN_CACHE = 'p3d-cdn-v1';
+const CDN_CACHE = 'p3d-cdn-v2';
 const SHELL_FILES = [
   './',
   './index.html',
@@ -16,7 +16,18 @@ const SHELL_FILES = [
 ];
 const CDN = __CDN_URLS__;
 const FONT_CSS = '__FONT_CSS__';
-const CDN_HOSTS = ['cdn.jsdelivr.net', 'cdn.tailwindcss.com', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+const CDN_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.com'];
+
+// Copie déjà en cache sous un ancien nom (les adresses des bibliothèques contiennent leur version :
+// même adresse = même fichier, la copie est donc sûre)
+async function fromOldCaches(url) {
+  for (const k of await caches.keys()) {
+    if (!k.startsWith('p3d-cdn-') || k === CDN_CACHE) continue;
+    const hit = await (await caches.open(k)).match(url, { ignoreVary: true });
+    if (hit) return hit;
+  }
+  return null;
+}
 
 self.addEventListener('install', (event) => {
   event.waitUntil((async () => {
@@ -27,8 +38,13 @@ self.addEventListener('install', (event) => {
       if (await cdn.match(url, { ignoreVary: true })) return;
       try {
         const res = await fetch(url, { mode: cors ? 'cors' : 'no-cors', credentials: 'omit' });
-        if (res.ok || res.type === 'opaque') await cdn.put(url, res);
-      } catch (e) { /* réessayé à la prochaine ouverture */ }
+        if (res.ok || res.type === 'opaque') {
+          await cdn.put(url, res);
+          return;
+        }
+      } catch (e) { /* CDN injoignable pendant la mise à jour */ }
+      const old = await fromOldCaches(url);
+      if (old) await cdn.put(url, old);
     }));
     try {
       const res = await fetch(FONT_CSS, { mode: 'cors', credentials: 'omit' });
@@ -52,7 +68,10 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil((async () => {
     const keys = await caches.keys();
-    await Promise.all(keys.filter((k) => k.startsWith('p3d-shell-') && k !== SHELL_CACHE).map((k) => caches.delete(k)));
+    // anciennes bibliothèques gardées tant que le nouveau cache ne les a pas TOUTES (sinon plus d'appli hors-ligne)
+    const cdn = await caches.open(CDN_CACHE);
+    const complete = (await Promise.all(CDN.map(({ url }) => cdn.match(url, { ignoreVary: true })))).every(Boolean);
+    await Promise.all(keys.filter((k) => (k.startsWith('p3d-shell-') && k !== SHELL_CACHE) || (complete && k.startsWith('p3d-cdn-') && k !== CDN_CACHE)).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -92,7 +111,7 @@ self.addEventListener('fetch', (event) => {
   if (CDN_HOSTS.includes(url.hostname)) {
     event.respondWith((async () => {
       const cdn = await caches.open(CDN_CACHE);
-      const cached = await cdn.match(req.url, { ignoreVary: true });
+      const cached = (await cdn.match(req.url, { ignoreVary: true })) || (await fromOldCaches(req.url));
       const network = fetch(req).then((res) => {
         if (res && (res.ok || res.type === 'opaque')) cdn.put(req.url, res.clone()).catch(() => {});
         return res;

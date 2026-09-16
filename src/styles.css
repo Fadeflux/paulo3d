@@ -6,6 +6,8 @@
   summary::-webkit-details-marker { display: none; }
   input[type='date'], input[type='datetime-local'] { color-scheme: dark; }
   b { @apply font-semibold; }
+  /* Sur petit écran, un graphique (canvas 300 px) ne doit pas élargir la page */
+  .grid > * { min-width: 0; }
 }
 
 @layer components {

@@ -100,6 +100,18 @@ const Boot = {
     App.start();
     Sync.start(backend);
     this.bindNotifier();
+    // Première ouverture : la démo est remplie d'exemples (c'est ce que promet l'écran d'accueil).
+    // Une seule fois : après « Vider la démo », elle reste vide.
+    if (!lsGet(LS.demoSeeded, false) && ['spools', 'templates', 'productions', 'sales'].every((t) => backend.S[t].size === 0)) {
+      try {
+        await Demo.seed();
+        lsSet(LS.demoSeeded, true);
+      } catch (e) {
+        // la démo reste utilisable (vide ou partielle) ; « Remplir avec des exemples » reste possible dans Paramètres
+        console.error('[paulo3d] exemples de démo non ajoutés', e);
+        toast("Les exemples de la démo n'ont pas pu être ajoutés (mémoire de l'appareil pleine ?).", { tone: 'warn' });
+      }
+    }
   },
 
   bindNotifier() {
@@ -111,6 +123,11 @@ const Boot = {
         const n = Sync.confirmedWhileAway;
         Sync.confirmedWhileAway = 0;
         toast(`${n} action${n > 1 ? 's' : ''} en attente ${n > 1 ? 'sont maintenant enregistrées' : 'est maintenant enregistrée'} dans la base.`, { tone: 'ok', title: 'Synchronisé' });
+      }
+      if (Sync.skippedWhileAway > 0) {
+        const n = Sync.skippedWhileAway;
+        Sync.skippedWhileAway = 0;
+        toast(`${n > 1 ? `${n} actions en attente n'ont` : "1 action en attente n'a"} rien enregistré : l'élément avait été supprimé sur un autre appareil.`, { tone: 'warn', title: 'Action ignorée' });
       }
       if (Sync.failedWhileAway > 0) {
         const n = Sync.failedWhileAway;

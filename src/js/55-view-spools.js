@@ -75,7 +75,7 @@ function spoolCard(V, s, status) {
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1"><h3 class="truncate font-semibold text-slate-100">${s.color_name || 'Sans nom'}</h3>${s.archived ? badge('Archivée', 'off') : spoolStatusBadge(status)}</div>
         <div class="truncate text-[13px] text-slate-400">${[s.brand, s.material].filter(Boolean).join(' · ')}</div>
       </div>
-      ${btn('', { variant: 'ghost', size: 'icon', icon: 'EllipsisVertical', action: 'spool-menu', attrs: `data-id="${s.id}"`, title: 'Plus d’actions', cls: '-mr-2 -mt-1 h-9 w-9' })}
+      ${btn('', { variant: 'ghost', size: 'icon', icon: 'EllipsisVertical', action: 'spool-menu', attrs: { 'data-id': s.id }, title: 'Plus d’actions', cls: '-mr-2 -mt-1 h-9 w-9' })}
     </div>
     <div class="mt-4">
       <div class="flex items-baseline justify-between gap-2">
@@ -91,8 +91,8 @@ function spoolCard(V, s, status) {
     </div>
     ${pendingBadge(V, `spools:${s.id}`) ? html`<div class="mt-2">${pendingBadge(V, `spools:${s.id}`)}</div>` : ''}
     <div class="mt-4 flex gap-2">
-      ${btn('Peser', { size: 'sm', icon: 'Scale', action: 'spool-weigh', attrs: `data-id="${s.id}"`, cls: 'flex-1' })}
-      ${btn('Modifier', { size: 'sm', variant: 'ghost', icon: 'Pencil', action: 'spool-edit', attrs: `data-id="${s.id}"`, cls: 'flex-1' })}
+      ${btn('Peser', { size: 'sm', icon: 'Scale', action: 'spool-weigh', attrs: { 'data-id': s.id }, cls: 'flex-1' })}
+      ${btn('Modifier', { size: 'sm', variant: 'ghost', icon: 'Pencil', action: 'spool-edit', attrs: { 'data-id': s.id }, cls: 'flex-1' })}
     </div>
   </article>`;
 }
@@ -145,7 +145,7 @@ Actions['spool-menu'] = (el) => {
       'm-history': (b, e, m) => { m.close(); openSpoolHistory(s); },
       'm-archive': async (b, e, m) => {
         m.close();
-        await runOp('spool.save', { ...pick(s, SPOOL_FIELDS), archived: !s.archived }, { success: s.archived ? 'Bobine réactivée' : 'Bobine archivée' });
+        await runOp('spool.patch', { id: s.id, fields: { archived: !s.archived } }, { success: s.archived ? 'Bobine réactivée' : 'Bobine archivée' });
       },
       'm-delete': async (b, e, m) => {
         m.close();
@@ -160,11 +160,11 @@ function openSpoolModal({ spool = null, duplicate = false }) {
   const editing = spool && !duplicate;
   const base = spool
     ? { ...pick(spool, SPOOL_FIELDS) }
-    : { brand: lsGet('p3d_last_brand', 'Bambu Lab'), material: 'PLA', color_name: '', color_hex: '#111111', price: null, initial_weight_g: 1000, tare_g: null, purchased_at: new Date().toISOString().slice(0, 10), notes: '' };
+    : { brand: lsGet('p3d_last_brand', 'Bambu Lab'), material: 'PLA', color_name: '', color_hex: '#111111', price: null, initial_weight_g: 1000, tare_g: null, purchased_at: toLocalInput().slice(0, 10), notes: '' };
   if (!editing) {
     base.id = uuid();
     base.archived = false;
-    base.purchased_at = new Date().toISOString().slice(0, 10);
+    base.purchased_at = toLocalInput().slice(0, 10);
   }
   const d = { s: base, started: false, remainingNow: null, busy: false };
   const V0 = Store.V;
@@ -193,12 +193,12 @@ function openSpoolModal({ spool = null, duplicate = false }) {
             <label class="relative h-11 w-14 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-white/10" style="background:${safeHex(d.s.color_hex)}" id="spool-color-swatch">
               <input type="color" name="color_hex" value="${safeHex(d.s.color_hex)}" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Choisir la couleur"/>
             </label>
-            ${inputText('color_name', d.s.color_name, { placeholder: 'Nom de la couleur (ex. Noir mat)', maxlength: 60, cls: 'flex-1', attrs: 'autofocus' })}
+            ${inputText('color_name', d.s.color_name, { placeholder: 'Nom de la couleur (ex. Noir mat)', maxlength: 60, cls: 'flex-1', attrs: { autofocus: true } })}
           </div>
           <div class="mt-2 flex flex-wrap gap-1.5">${COLOR_PRESETS.map(([n, h]) => html`<button type="button" data-action="preset" data-name="${n}" data-hex="${h}" class="h-7 w-7 rounded-full border border-white/15 transition hover:scale-110 ${safeHex(d.s.color_hex) === h ? 'ring-2 ring-neon ring-offset-2 ring-offset-ink-900' : ''}" style="background:${h}" title="${n}" aria-label="${n}"></button>`)}</div>
         </div>
         <div class="grid grid-cols-2 gap-3">
-          ${field('Marque', html`${inputText('brand', d.s.brand, { placeholder: 'Bambu Lab', maxlength: 80, attrs: 'list="brand-list"' })}<datalist id="brand-list">${knownBrands.map((b) => html`<option value="${b}"></option>`)}</datalist>`)}
+          ${field('Marque', html`${inputText('brand', d.s.brand, { placeholder: 'Bambu Lab', maxlength: 80, attrs: { list: 'brand-list' } })}<datalist id="brand-list">${knownBrands.map((b) => html`<option value="${b}"></option>`)}</datalist>`)}
           ${field('Matière', selectInput('material', knownMaterials.map((m) => ({ value: m, label: m })), d.s.material))}
         </div>
         <div class="grid grid-cols-2 gap-3">
@@ -311,9 +311,9 @@ function openWeighModal(spool) {
       body: html`<div class="space-y-4">
         ${segmented('mode', [{ value: 'gross', label: 'Sur la balance' }, { value: 'net', label: 'Poids net connu' }], d.mode, { action: 'mode', cls: 'w-full [&>button]:flex-1' })}
         ${d.mode === 'gross'
-          ? html`${field('Poids affiché par la balance', inputNum('gross', d.gross, { suffix: 'g', placeholder: '890', inputmode: 'numeric', attrs: 'autofocus' }))}
+          ? html`${field('Poids affiché par la balance', inputNum('gross', d.gross, { suffix: 'g', placeholder: '890', inputmode: 'numeric', attrs: { autofocus: true } }))}
              ${field('Poids de la bobine vide', inputNum('tare', d.tare, { suffix: 'g', placeholder: '250', inputmode: 'numeric' }), { hint: d.tare ? 'Retenu pour la prochaine pesée.' : 'Indique-le une fois : il sera retenu pour cette bobine.' })}`
-          : field('Filament restant (sans la bobine vide)', inputNum('net', d.net, { suffix: 'g', placeholder: '640', inputmode: 'numeric', attrs: 'autofocus' }))}
+          : field('Filament restant (sans la bobine vide)', inputNum('net', d.net, { suffix: 'g', placeholder: '640', inputmode: 'numeric', attrs: { autofocus: true } }))}
         <div id="weigh-preview">${preview()}</div>
         <p class="text-[12px] text-slate-500">La pesée fait foi : les consommations saisies avant elle ne comptent plus, celles d'après sont déduites.</p>
       </div>`,
@@ -339,8 +339,7 @@ function openWeighModal(spool) {
         d.busy = true;
         const res = await runOp('spool.weigh', { id: uuid(), spool_id: spool.id, measured_g: roundDb(net, 2), occurred_at: new Date().toISOString() }, { success: `Pesée enregistrée : ${fmtG(net)}` });
         if (opAccepted(res) && d.mode === 'gross' && roundDb(d.tare, 2) !== toNum(spool.tare_g, -1)) {
-          const cur = Store.V.spools.get(spool.id) || spool;
-          await Sync.enqueue('spool.save', { ...pick(cur, SPOOL_FIELDS), tare_g: roundDb(d.tare, 2) }, { wait: 0 });
+          await Sync.enqueue('spool.patch', { id: spool.id, fields: { tare_g: roundDb(d.tare, 2) } }, { wait: 0, silent: true });
         }
         d.busy = false;
         if (opAccepted(res)) m.close();

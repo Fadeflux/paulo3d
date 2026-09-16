@@ -9,6 +9,7 @@
    ============================================================================= */
 
 const JSZIP_URL = 'https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js';
+const JSZIP_SRI = '__SRI_JSZIP__';
 
 function decodeXml(s) {
   return String(s || '')
@@ -139,10 +140,8 @@ function parseGcodeText(text) {
     out.filaments.push({ id: i + 1, type: normalizeMaterial(exact ? typeList[i] : typeList[0]), color: safeHex(exact ? colorList[i] : '', '#FFFFFF'), grams: g });
   });
   if (weights.length > 1 && !exact) out.warnings.push('Couleurs à vérifier : le fichier ne dit pas quelle couleur correspond à quel poids.');
-  if ((m = t.match(/;\s*total filament used for wipe tower \[g\]\s*=\s*([\d.]+)/i))) {
-    const wipe = parseFloat(m[1]);
-    if (wipe > 0) out.purgeG = wipe;
-  }
+  // « filament used [g] » inclut déjà la tour d'essuyage : on ne la rajoute pas une seconde fois
+  if (/;\s*total filament used for wipe tower \[g\]\s*=\s*[\d.]+/i.test(t) || /;\s*total filament weight \[g\]/i.test(t)) out.purgeIncluded = true;
   if (!out.filaments.length && (m = t.match(/;\s*total filament used \[g\]\s*=\s*([\d.]+)/i))) {
     out.filaments.push({ id: 1, type: normalizeMaterial(typeList[0]), color: safeHex(colorList[0], '#FFFFFF'), grams: parseFloat(m[1]) });
   }
@@ -227,16 +226,26 @@ function fromPlates(plates, source) {
   };
 }
 
-function loadScript(src) {
-  return new Promise((resolve, reject) => {
-    if ([...document.scripts].some((s) => s.src === src)) return resolve();
+// Bibliothèque chargée à la demande, avec contrôle d'intégrité : un fichier modifié sur le CDN est refusé
+const loading = new Map();
+function loadScript(src, integrity) {
+  if (loading.has(src)) return loading.get(src);
+  const p = new Promise((resolve, reject) => {
     const el = document.createElement('script');
     el.src = src;
     el.async = true;
+    el.crossOrigin = 'anonymous';
+    if (integrity) el.integrity = integrity;
     el.onload = () => resolve();
-    el.onerror = () => reject(new Error('Impossible de charger le module de lecture des fichiers (réseau ?).'));
+    el.onerror = () => {
+      loading.delete(src);
+      el.remove();
+      reject(new Error('Impossible de charger le module (réseau coupé ou fichier refusé).'));
+    };
     document.head.appendChild(el);
   });
+  loading.set(src, p);
+  return p;
 }
 
 async function readHeadTail(file, bytes = 262144) {
@@ -264,7 +273,7 @@ async function blobToThumb(blob, size = 256) {
 async function parseSlicerFile(file) {
   const baseName = file.name.replace(/\.(gcode\.3mf|3mf|gcode|gco|g)$/i, '').replace(/[_]+/g, ' ').trim();
   if (/\.3mf$/i.test(file.name)) {
-    if (!globalThis.JSZip) await loadScript(JSZIP_URL);
+    if (!globalThis.JSZip) await loadScript(JSZIP_URL, JSZIP_SRI);
     let zip;
     try {
       zip = await JSZip.loadAsync(file);

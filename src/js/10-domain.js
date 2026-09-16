@@ -38,6 +38,23 @@ const SPOOL_STATUS = {
 
 const time = (iso) => (iso ? new Date(iso).getTime() : 0);
 
+// Horodatage PostgreSQL précis à la microseconde (Date s'arrête à la milliseconde)
+function tsMicros(iso) {
+  if (!iso) return 0;
+  const s = String(iso).trim();
+  const m = s.match(/^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2}:\d{2})(?:\.(\d+))?(Z|[+-]\d{2}(?::?\d{2})?)?$/i);
+  if (!m) {
+    const t = Date.parse(s);
+    return Number.isFinite(t) ? t * 1000 : 0;
+  }
+  let zone = m[4] || 'Z';
+  if (/^[+-]\d{2}$/.test(zone)) zone += ':00';
+  else if (/^[+-]\d{4}$/.test(zone)) zone = `${zone.slice(0, 3)}:${zone.slice(3)}`;
+  const base = Date.parse(`${m[1]}T${m[2]}${zone.toUpperCase()}`);
+  if (!Number.isFinite(base)) return 0;
+  return base * 1000 + Number((m[3] || '').padEnd(6, '0').slice(0, 6));
+}
+
 // Arrondi « comme PostgreSQL » (moitié loin de zéro) : l'écran et la base tombent juste
 function roundDb(v, d = 2) {
   const n = toNum(v);
@@ -66,6 +83,17 @@ const valuesOf = (map) => (map ? [...map.values()] : []);
 /* ---------- machines ---------- */
 function activeMachines(V) {
   return valuesOf(V.machines).filter((m) => !m.archived).sort((a, b) => (b.is_default - a.is_default) || a.name.localeCompare(b.name, 'fr'));
+}
+// Choix d'une machine : les machines actives, plus celle déjà choisie si elle a été archivée
+// (sinon la liste afficherait « Par défaut » alors que le calcul utilise la machine archivée)
+function machineOptions(V, selectedId) {
+  const list = activeMachines(V);
+  const sel = selectedId ? V.machines.get(selectedId) : null;
+  if (sel && sel.archived) list.push(sel);
+  return [
+    { value: '', label: `Par défaut (${fmtNum(settingsOf(V).machine_rate, 2)} €/h)` },
+    ...list.map((mc) => ({ value: mc.id, label: `${mc.name}${mc.archived ? ' (archivée)' : ''} (${fmtNum(mc.hourly_rate, 2)} €/h)` })),
+  ];
 }
 function defaultMachine(V) {
   return activeMachines(V).find((m) => m.is_default) || null;
@@ -557,18 +585,48 @@ function stockValue(V) {
   return sum(valuesOf(V.production_stock), (l) => toNum(l.qty_available) * toNum(l.unit_cost));
 }
 
+// Courbe mensuelle : jamais de mois FUTUR compté à 0 € (la courbe ne doit pas « chuter » à tort)
+//   month / prev : les 12 mois glissants qui se terminent sur le mois affiché
+//   year         : janvier → décembre de l'année, mois futurs = null (la courbe s'arrête)
+//   all          : depuis la première activité (au moins 12 mois)
+const seriesCache = new WeakMap();
 function monthlySeries(V, period, now = new Date()) {
+  // même vue + même mois = même courbe : pas de recalcul à chaque réaffichage (jusqu'à 120 mois de statistiques)
+  const cacheKey = `${period}|${now.getFullYear()}-${now.getMonth()}`;
+  const cached = seriesCache.get(V);
+  if (cached && cached.has(cacheKey)) return cached.get(cacheKey);
+  const out = computeMonthlySeries(V, period, now);
+  if (!cached) seriesCache.set(V, new Map([[cacheKey, out]]));
+  else cached.set(cacheKey, out);
+  return out;
+}
+function computeMonthlySeries(V, period, now) {
   const months = [];
-  if (period === 'all') {
-    for (let i = 11; i >= 0; i--) months.push(new Date(now.getFullYear(), now.getMonth() - i, 1));
-  } else {
+  const thisMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+  if (period === 'year') {
     const y = periodRange(period, now).year;
     for (let m = 0; m < 12; m++) months.push(new Date(y, m, 1));
+  } else if (period === 'all') {
+    let first = new Date(thisMonth.getFullYear(), thisMonth.getMonth() - 11, 1);
+    for (const t of ['sales', 'productions']) {
+      for (const r of valuesOf(V[t])) {
+        const d = new Date(r.occurred_at);
+        if (Number.isFinite(d.getTime()) && d < first) first = new Date(d.getFullYear(), d.getMonth(), 1);
+      }
+    }
+    for (let d = first; d <= thisMonth; d = new Date(d.getFullYear(), d.getMonth() + 1, 1)) months.push(d);
+    months.splice(0, Math.max(0, months.length - 120)); // 10 ans maximum (une date aberrante ne doit pas créer 600 points)
+  } else {
+    const last = periodRange(period, now).start;
+    for (let i = 11; i >= 0; i--) months.push(new Date(last.getFullYear(), last.getMonth() - i, 1));
   }
+  const withYear = period !== 'year';
   return months.map((start) => {
+    const label = `${MONTHS[start.getMonth()]}${withYear ? ` ${String(start.getFullYear()).slice(2)}` : ''}`;
+    if (start > thisMonth) return { label, revenue: null, net: null };
     const end = new Date(start.getFullYear(), start.getMonth() + 1, 1);
     const s = computeStats(V, { start, end });
-    return { label: `${MONTHS[start.getMonth()]}${period === 'all' ? ` ${String(start.getFullYear()).slice(2)}` : ''}`, revenue: s.revenue, net: s.net };
+    return { label, revenue: s.revenue, net: s.net };
   });
 }
 
@@ -651,19 +709,21 @@ function toCsv(header, rows) {
 }
 const csvDate = (iso) => (iso ? `${fmtDate(iso, 'short')} ${fmtDate(iso, 'time')}` : '');
 
+// Montants au centime dans les CSV (lisibles dans Excel) ; l'export JSON garde la précision complète
+const eur = (v) => roundDb(toNum(v), 2);
 function exportCsvSales(V) {
   const st = settingsOf(V);
   const rows = valuesOf(V.sales).sort((a, b) => time(a.occurred_at) - time(b.occurred_at)).map((s) => {
     const items = saleItemsOf(V, s.id);
     return [csvDate(s.occurred_at), channelOf(st, s.channel).name, s.customer || '', items.map((i) => `${i.quantity} × ${i.item_name} (${NF.n2.format(i.unit_price)} €)`).join(' + '),
-      sum(items, (i) => i.quantity), toNum(s.amount), toNum(s.cogs), toNum(s.shipping_cost), toNum(s.packaging_cost), toNum(s.platform_fee), toNum(s.net_margin), s.note || ''];
+      sum(items, (i) => i.quantity), eur(s.amount), eur(s.cogs), eur(s.shipping_cost), eur(s.packaging_cost), eur(s.platform_fee), eur(s.net_margin), s.note || ''];
   });
   return toCsv(['Date', 'Canal', 'Client', 'Articles', 'Quantité', 'Encaissé (€)', 'Coût de revient (€)', 'Port payé (€)', 'Emballage (€)', 'Commission (€)', 'Marge nette (€)', 'Note'], rows);
 }
 function exportCsvProductions(V) {
   const rows = valuesOf(V.productions).sort((a, b) => time(a.occurred_at) - time(b.occurred_at)).map((p) => [
     csvDate(p.occurred_at), p.kind === 'failure' ? 'Print raté' : 'Production', p.item_name, p.quantity, p.kind === 'failure' ? toNum(p.failed_pct) : '',
-    toNum(p.grams_total), toNum(p.print_time_min_total), toNum(p.material_cost), toNum(p.purge_cost), toNum(p.hardware_cost), toNum(p.machine_cost), toNum(p.labor_cost), toNum(p.total_cost), toNum(p.unit_cost), p.failure_reason || '', p.note || '']);
+    toNum(p.grams_total), toNum(p.print_time_min_total), eur(p.material_cost), eur(p.purge_cost), eur(p.hardware_cost), eur(p.machine_cost), eur(p.labor_cost), eur(p.total_cost), eur(p.unit_cost), p.failure_reason || '', p.note || '']);
   return toCsv(['Date', 'Type', 'Article', 'Quantité', 'Échec (%)', 'Filament (g)', 'Temps machine (min)', 'Matière (€)', 'Purge (€)', 'Quincaillerie (€)', 'Machine (€)', "Main-d'œuvre (€)", 'Total (€)', 'Coût unitaire (€)', 'Raison', 'Note'], rows);
 }
 function exportCsvSpools(V) {
@@ -672,7 +732,7 @@ function exportCsvSpools(V) {
   return toCsv(['Marque', 'Matière', 'Couleur', 'Code couleur', 'Prix (€)', 'Poids initial (g)', 'Poids restant (g)', 'Prix au gramme (€)', 'Statut', 'Archivée', "Date d'achat"], rows);
 }
 function exportCsvJournal(V) {
-  const rows = historyEvents(V).reverse().map((e) => [csvDate(e.date), e.title, e.sub, e.amount === null ? '' : round(e.amount, 2)]);
+  const rows = historyEvents(V).reverse().map((e) => [csvDate(e.date), e.title, e.sub, e.amount === null ? '' : eur(e.amount)]);
   return toCsv(['Date', 'Évènement', 'Détails', 'Montant (€)'], rows);
 }
 function exportJson(V) {

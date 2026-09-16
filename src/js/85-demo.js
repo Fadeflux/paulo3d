@@ -159,11 +159,11 @@ const Demo = {
     const b = Sync.backend;
     if (!b || b.kind !== 'demo') return;
     await b.reset();
+    for (const op of [...Store.Q]) await Store.removeOp(op.id);
     Store.S = emptyState();
-    Store.Q = [];
     Store.meta = { lastPull: {}, lastReconcile: 0 };
+    Store.markMeta();
     for (const t of TABLES) Store.dirty.add(t);
-    await Store.persistQueue();
     await Store.persistSnapshotNow();
     Store.rebuild(true);
     await Sync.kick(true);

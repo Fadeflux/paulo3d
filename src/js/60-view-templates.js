@@ -47,7 +47,7 @@ function templateCard(V, t, st) {
     <div class="flex flex-1 flex-col p-4">
       <div class="flex items-start justify-between gap-2">
         <h3 class="line-clamp-2 font-semibold leading-snug text-slate-100">${t.name}</h3>
-        ${btn('', { variant: 'ghost', size: 'icon', icon: 'EllipsisVertical', action: 'tpl-menu', attrs: `data-id="${t.id}"`, title: 'Plus d’actions', cls: '-mr-2 -mt-1 h-9 w-9 shrink-0' })}
+        ${btn('', { variant: 'ghost', size: 'icon', icon: 'EllipsisVertical', action: 'tpl-menu', attrs: { 'data-id': t.id }, title: 'Plus d’actions', cls: '-mr-2 -mt-1 h-9 w-9 shrink-0' })}
       </div>
       <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-slate-400">
         ${colorDots(t.materials)}<span>${fmtG(p.cost.grams)}</span><span class="text-slate-600">·</span><span>${fmtDuration(t.print_time_min)}</span>${toNum(t.labor_min) > 0 ? html`<span class="text-slate-600">·</span><span>${fmtNum(t.labor_min)} min finition</span>` : ''}
@@ -58,8 +58,8 @@ function templateCard(V, t, st) {
         <div><div class="text-[11px] text-slate-500">Marge</div><div class="font-display text-[15px] font-semibold tabular-nums ${marginTone}">${fmtPct(p.margin.pct, 0)}</div></div>
       </div>
       <div class="mt-auto flex gap-2 pt-3">
-        ${t.archived ? btn('Réactiver', { size: 'sm', icon: 'ArchiveRestore', action: 'tpl-unarchive', attrs: `data-id="${t.id}"`, cls: 'flex-1' })
-          : html`${btn('Produire', { size: 'sm', variant: 'primary', icon: 'Printer', action: 'tpl-produce', attrs: `data-id="${t.id}"`, cls: 'flex-1' })}${btn('Vendre', { size: 'sm', icon: 'ShoppingBag', action: 'tpl-sell', attrs: `data-id="${t.id}"`, cls: 'flex-1' })}`}
+        ${t.archived ? btn('Réactiver', { size: 'sm', icon: 'ArchiveRestore', action: 'tpl-unarchive', attrs: { 'data-id': t.id }, cls: 'flex-1' })
+          : html`${btn('Produire', { size: 'sm', variant: 'primary', icon: 'Printer', action: 'tpl-produce', attrs: { 'data-id': t.id }, cls: 'flex-1' })}${btn('Vendre', { size: 'sm', icon: 'ShoppingBag', action: 'tpl-sell', attrs: { 'data-id': t.id }, cls: 'flex-1' })}`}
       </div>
     </div>
   </article>`;
@@ -74,7 +74,7 @@ Actions['tpl-produce'] = (el) => openProductionModal({ kind: 'production', templ
 Actions['tpl-sell'] = (el) => openSaleModal({ templateId: el.dataset.id });
 Actions['tpl-unarchive'] = async (el) => {
   const t = Store.V.templates.get(el.dataset.id);
-  if (t) await runOp('template.save', { ...pick(t, TEMPLATE_FIELDS), archived: false }, { success: 'Template réactivé' });
+  if (t) await runOp('template.patch', { id: t.id, fields: { archived: false } }, { success: 'Template réactivé' });
 };
 Actions['tpl-search'] = debounce((el) => {
   App.ui.tplQ = el.value;
@@ -107,7 +107,7 @@ Actions['tpl-menu'] = (el) => {
       'm-dup': (b, e, m) => { m.close(); openTemplateModal({ template: t, duplicate: true }); },
       'm-archive': async (b, e, m) => {
         m.close();
-        await runOp('template.save', { ...pick(t, TEMPLATE_FIELDS), archived: !t.archived }, { success: t.archived ? 'Template réactivé' : 'Template archivé' });
+        await runOp('template.patch', { id: t.id, fields: { archived: !t.archived } }, { success: t.archived ? 'Template réactivé' : 'Template archivé' });
       },
       'm-delete': async (b, e, m) => {
         m.close();
@@ -271,20 +271,22 @@ function openTemplateModal({ template = null, duplicate = false }) {
           <label class="relative h-10 w-10 shrink-0 cursor-pointer overflow-hidden rounded-xl border border-white/10" style="background:${safeHex(l.color_hex)}">
             <input type="color" name="m_color_hex" data-line="${i}" value="${safeHex(l.color_hex)}" class="absolute inset-0 h-full w-full cursor-pointer opacity-0" aria-label="Couleur"/>
           </label>
-          ${selectInput('m_material', knownMaterials.map((m) => ({ value: m, label: m })), l.material, { attrs: `data-line="${i}"`, cls: 'w-32 shrink-0' })}
-          ${inputNum('m_grams', l.grams, { suffix: 'g', placeholder: 'Grammes', cls: 'flex-1', attrs: `data-line="${i}"` })}
-          ${d.t.materials.length > 1 ? btn('', { variant: 'ghost', size: 'icon', icon: 'X', action: 'line-remove', attrs: `data-line="${i}"`, title: 'Retirer cette matière', cls: 'shrink-0' }) : ''}
+          ${selectInput('m_material', knownMaterials.map((m) => ({ value: m, label: m })), l.material, { attrs: { 'data-line': i }, cls: 'w-32 shrink-0' })}
+          ${inputNum('m_grams', l.grams, { suffix: 'g', placeholder: 'Grammes', cls: 'flex-1', attrs: { 'data-line': i } })}
+          ${d.t.materials.length > 1 ? btn('', { variant: 'ghost', size: 'icon', icon: 'X', action: 'line-remove', attrs: { 'data-line': i }, title: 'Retirer cette matière', cls: 'shrink-0' }) : ''}
         </div>
         <div class="mt-2 grid gap-2 sm:grid-cols-2">
-          ${inputText('m_color_name', l.color_name, { placeholder: 'Nom de la couleur', maxlength: 60, attrs: `data-line="${i}"` })}
-          ${selectInput('m_spool', opts, l.spool_id || '', { attrs: `data-line="${i}"` })}
+          ${inputText('m_color_name', l.color_name, { placeholder: 'Nom de la couleur', maxlength: 60, attrs: { 'data-line': i } })}
+          ${selectInput('m_spool', opts, l.spool_id || '', { attrs: { 'data-line': i } })}
         </div>
       </div>`;
     })}</div>`;
   };
 
-  const timeH = () => Math.floor(toNum(d.t.print_time_min) / 60);
-  const timeM = () => roundDb(toNum(d.t.print_time_min) - timeH() * 60, 0);
+  // Affichage h + min à partir des minutes ARRONDIES (119,7 min → 2 h 00, jamais « 1 h 60 »)
+  const timeTotal = () => Math.max(0, Math.round(toNum(d.t.print_time_min)));
+  const timeH = () => Math.floor(timeTotal() / 60);
+  const timeM = () => timeTotal() - timeH() * 60;
 
   const handleImportFile = async (file, m) => {
     if (!file) return;
@@ -315,7 +317,7 @@ function openTemplateModal({ template = null, duplicate = false }) {
             <div class="flex gap-3">
               <div class="relative h-24 w-24 shrink-0 overflow-hidden rounded-2xl border border-white/10 bg-ink-850 p-2">${layeredThumb(d.t.materials, d.t.photo)}</div>
               <div class="min-w-0 flex-1 space-y-2">
-                ${field('Nom du produit', inputText('name', d.t.name, { placeholder: 'Support Manette Universel', attrs: editing ? '' : 'autofocus' }))}
+                ${field('Nom du produit', inputText('name', d.t.name, { placeholder: 'Support Manette Universel', attrs: editing ? null : { autofocus: true } }))}
                 <div class="flex flex-wrap gap-2">
                   <label class="btn btn-ghost h-8 cursor-pointer rounded-lg px-2.5 text-[12px]">${icon('ImagePlus', 'w-4 h-4')}<span>${d.t.photo ? 'Changer la photo' : 'Ajouter une photo'}</span><input type="file" name="photo_file" accept="image/*" class="sr-only"/></label>
                   ${d.t.photo ? btn('Retirer', { size: 'sm', variant: 'ghost', action: 'photo-remove', cls: 'h-8 text-[12px]' }) : ''}
@@ -342,7 +344,7 @@ function openTemplateModal({ template = null, duplicate = false }) {
               ${field('Post-traitement', inputNum('labor_min', d.t.labor_min, { suffix: 'min', placeholder: '0', inputmode: 'numeric' }), { hint: 'Supports, ponçage, assemblage.' })}
             </div>
             <div class="grid grid-cols-2 gap-3">
-              ${field('Machine', selectInput('machine_id', [{ value: '', label: `Par défaut (${fmtNum(settingsOf(Store.V).machine_rate, 2)} €/h)` }, ...activeMachines(Store.V).map((mc) => ({ value: mc.id, label: `${mc.name} (${fmtNum(mc.hourly_rate, 2)} €/h)` }))], d.t.machine_id || ''))}
+              ${field('Machine', selectInput('machine_id', machineOptions(Store.V, d.t.machine_id), d.t.machine_id || ''))}
               ${field('Pièces par plateau', inputNum('pieces_per_print', d.t.pieces_per_print, { placeholder: '1', inputmode: 'numeric' }), { hint: 'Pour information.' })}
             </div>
           </section>
@@ -433,9 +435,12 @@ function openTemplateModal({ template = null, duplicate = false }) {
         return;
       }
       if (name === 'time_h' || name === 'time_m') {
-        const h = name === 'time_h' ? toNum(num(), 0) : timeH();
-        const mn = name === 'time_m' ? toNum(num(), 0) : timeM();
-        d.t.print_time_min = Math.max(0, h * 60 + mn);
+        // Les deux champs tels qu'ils sont affichés (ex. « 1 h 90 min » = 150 min)
+        const readTime = (n) => {
+          const f = m.q(`[name="${n}"]`);
+          return f && f.value.trim() !== '' ? toNum(parseNum(f.value), 0) : 0;
+        };
+        d.t.print_time_min = Math.max(0, readTime('time_h') * 60 + readTime('time_m'));
       } else if (el.hasAttribute('data-num')) {
         d.t[name] = num();
       } else if (name === 'machine_id') {

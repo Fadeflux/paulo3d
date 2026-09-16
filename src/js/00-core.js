@@ -12,6 +12,7 @@ const LS = {
   period: 'p3d_period',
   ui: 'p3d_ui',
   demoOffline: 'p3d_demo_offline',
+  demoSeeded: 'p3d_demo_seeded',
 };
 
 const MATERIALS = ['PLA', 'PLA Silk', 'PLA Mat', 'PLA-CF', 'PETG', 'PETG-CF', 'ABS', 'ASA', 'TPU', 'PA', 'PC', 'PVA', 'Résine', 'Autre'];
@@ -92,10 +93,13 @@ const sum = (arr, fn = (x) => x) => arr.reduce((acc, x) => acc + toNum(fn(x)), 0
 
 function fmtEur(v, { sign = false, compact = false } = {}) {
   const n = toNum(v);
-  const s = (compact && Math.abs(n) >= 1000 ? NF.eur0 : NF.eur).format(Math.abs(n) < 0.005 ? 0 : n);
+  // compact (axes des graphiques) : « 300 € » plutôt que « 300,00 € »
+  const s = (compact && (Math.abs(n) >= 1000 || Number.isInteger(n)) ? NF.eur0 : NF.eur).format(Math.abs(n) < 0.005 ? 0 : n);
   return sign && n > 0.004 ? `+${s}` : s;
 }
 const fmtNum = (v, d = 0) => (d === 0 ? NF.n0 : d === 1 ? NF.n1 : d === 2 ? NF.n2 : NF.n3).format(toNum(v));
+// Accord en français : 0 et 1 au singulier (« 1 pièce prête », « 3 pièces prêtes »)
+const plural = (n, one, many) => `${fmtNum(n)} ${Math.abs(Math.round(toNum(n))) >= 2 ? many : one}`;
 function fmtG(g) {
   const n = toNum(g);
   if (Math.abs(n) >= 1000) return `${NF.n2.format(n / 1000)} kg`;
@@ -254,11 +258,11 @@ function lsSet(key, value) {
 /* ---------- icônes Lucide (sous-ensemble intégré au build) ---------- */
 const ICONS = /*@@ICONS@@*/ {};
 
-function icon(name, cls = 'w-5 h-5', extra = '') {
+function icon(name, cls = 'w-5 h-5') {
   const node = ICONS[name];
   if (!node) return raw('');
   const inner = node.map(([tag, attrs]) => `<${tag} ${Object.entries(attrs).map(([k, v]) => `${k}="${esc(v)}"`).join(' ')}/>`).join('');
-  return raw(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${esc(cls)}" aria-hidden="true" ${extra}>${inner}</svg>`);
+  return raw(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${esc(cls)}" aria-hidden="true">${inner}</svg>`);
 }
 
 /* ---------- logo Paulo3D : le P imprimé couche par couche ---------- */

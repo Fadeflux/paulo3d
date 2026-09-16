@@ -3,6 +3,7 @@
    - Toute action passe par la file d'envoi, gardée sur l'appareil AVANT d'être
      annoncée. L'écran ne dit « enregistré » qu'après la réponse de la base.
    - Sans réseau : l'action attend et repart toute seule au retour du réseau.
+   - Session expirée : rien n'est envoyé ni refusé tant qu'on ne s'est pas reconnecté.
    - Refusée par la base : l'action est mise de côté et affichée, jamais oubliée.
    ============================================================================= */
 
@@ -48,6 +49,7 @@ const Sync = {
   timers: [],
   confirmedWhileAway: 0,
   failedWhileAway: 0,
+  skippedWhileAway: 0,
 
   subscribe(fn) {
     this.listeners.add(fn);
@@ -68,6 +70,7 @@ const Sync = {
     this.backend = backend;
     this.state.needsLogin = false;
     this.state.firstPullDone = false;
+    this.state.schemaVersion = null;
     const onOnline = () => {
       this.state.online = true;
       this.emit();
@@ -80,7 +83,9 @@ const Sync = {
     const onVisible = () => {
       if (document.visibilityState === 'visible') {
         const stale = !this.state.lastPullAt || Date.now() - time(this.state.lastPullAt) > 30000;
-        if (stale) this.kick();
+        // des actions attendent : on retente tout de suite (sans attendre la fin du délai d'attente)
+        const waiting = Store.Q.some((o) => o.status === 'pending');
+        if (stale || waiting) this.kick();
       }
     };
     window.addEventListener('online', onOnline);
@@ -98,7 +103,8 @@ const Sync = {
     if (channel) {
       const onMsg = async (ev) => {
         if (ev.data && ev.data.type === 'outbox' && ev.data.db === Store.dbName) {
-          await Store.reloadQueue();
+          // sous le verrou d'envoi : jamais une copie périmée de la file pendant qu'un envoi la modifie
+          await withLock(`p3d-flush:${Store.dbName}`, () => Store.reloadQueue());
           Store.rebuild();
           this.emit();
         }
@@ -110,7 +116,21 @@ const Sync = {
       (payload) => this.onRealtime(payload),
       (status) => this.onRealtimeStatus(status),
     );
-    this.kick(true);
+    // Nouvelle session : seules les actions refusées À CAUSE de la session repartent
+    // (une action refusée par la base pour une autre raison reste refusée : sinon doublon)
+    withLock(`p3d-flush:${Store.dbName}`, async () => {
+      await Store.reloadQueue();
+      const reset = Store.Q.filter((o) => (o.status === 'failed' ? !!(o.error && AUTH_CODES.includes(o.error.code)) : !!o.authRetried));
+      for (const o of reset) {
+        await Store.putOp({ ...o, authRetried: false, status: o.status === 'failed' ? 'pending' : o.status, error: o.status === 'failed' ? null : o.error });
+      }
+      return reset.length;
+    })
+      .then((n) => {
+        if (n) Store.rebuild();
+      })
+      .catch((e) => console.error('[paulo3d] reprise des actions impossible', e))
+      .finally(() => this.kick(true));
   },
 
   stop() {
@@ -129,14 +149,14 @@ const Sync = {
   },
 
   // Enregistre une action. Résultat : confirmed | queued | failed | rejected
-  async enqueue(type, payload, { wait = 7000 } = {}) {
+  // silent : action technique (pas d'annonce « envoyée » plus tard)
+  async enqueue(type, payload, { wait = 7000, silent = false } = {}) {
     const def = OPS[type];
     if (!def) return { state: 'rejected', error: new OpError('LOCAL', `Action inconnue : ${type}`) };
     const err = def.validate ? def.validate(Store.V, payload) : null;
     if (err) return { state: 'rejected', error: err };
-    const op = { id: uuid(), type, payload, created_at: new Date().toISOString(), status: 'pending', attempts: 0, error: null };
-    Store.Q.push(op);
-    const kept = await Store.persistQueue();
+    const op = { id: uuid(), type, payload, created_at: new Date().toISOString(), seq: Store.nextSeq(), status: 'pending', attempts: 0, error: null, silent };
+    const kept = await Store.putOp(op);
     if (!kept) {
       Store.Q = Store.Q.filter((o) => o.id !== op.id);
       return { state: 'rejected', error: new OpError('LOCAL', "L'appareil n'a pas pu garder cette action (mémoire pleine ?). Rien n'a été enregistré.") };
@@ -145,25 +165,29 @@ const Sync = {
     this.emit();
     const done = new Promise((resolve) => this.waiters.set(op.id, resolve));
     this.flush();
-    const timeout = sleep(wait).then(() => ({ state: 'queued', slow: true }));
+    const timeout = sleep(wait).then(() => ({ state: 'queued', slow: true, timedOut: true }));
     const res = await Promise.race([done, timeout]);
-    return { ...res, opId: op.id };
+    // délai écoulé : la réponse arrivera plus tard et sera annoncée comme telle
+    if (res.timedOut) this.waiters.delete(op.id);
+    return { state: res.state, error: res.error, slow: res.slow, tombstoned: !!res.tombstoned, opId: op.id };
   },
 
-  resolveWaiter(opId, result) {
-    const w = this.waiters.get(opId);
+  resolveWaiter(op, result) {
+    const w = this.waiters.get(op.id);
     if (w) {
-      this.waiters.delete(opId);
+      this.waiters.delete(op.id);
       w(result);
-    } else if (result.state === 'confirmed') {
-      this.confirmedWhileAway++;
-    } else if (result.state === 'failed') {
-      this.failedWhileAway++;
+      return;
     }
+    if (op.silent && result.state !== 'failed') return;
+    // « supprimé entre-temps sur un autre appareil » : l'action n'a rien enregistré, on ne l'annonce pas comme faite
+    if (result.state === 'confirmed' && result.tombstoned) this.skippedWhileAway++;
+    else if (result.state === 'confirmed') this.confirmedWhileAway++;
+    else if (result.state === 'failed') this.failedWhileAway++;
   },
 
   resolvePendingAsQueued() {
-    for (const op of Store.Q) if (op.status === 'pending') this.resolveWaiter(op.id, { state: 'queued' });
+    for (const op of Store.Q) if (op.status === 'pending' || op.status === 'sending') this.resolveWaiter(op, { state: 'queued' });
   },
 
   scheduleRetry() {
@@ -173,7 +197,7 @@ const Sync = {
   },
 
   async flush() {
-    if (!this.backend || !this.backend.ready()) {
+    if (!this.backend || !this.backend.ready() || this.state.needsLogin) {
       this.resolvePendingAsQueued();
       return;
     }
@@ -187,58 +211,71 @@ const Sync = {
       await withLock(`p3d-flush:${Store.dbName}`, async () => {
         await Store.reloadQueue();
         for (;;) {
-          const op = Store.Q.find((o) => o.status === 'pending');
-          if (!op) break;
-          op.status = 'sending';
-          op.attempts = (op.attempts || 0) + 1;
-          await Store.persistQueue();
+          if (this.state.needsLogin) {
+            this.resolvePendingAsQueued();
+            return;
+          }
+          // sous le verrou, une action « en cours d'envoi » est forcément un envoi interrompu
+          const found = Store.Q.find((o) => o.status === 'pending' || o.status === 'sending');
+          if (!found) break;
+          const op = { ...found, status: 'sending', attempts: (found.attempts || 0) + 1 };
+          await Store.putOp(op);
           let bundle;
           try {
             bundle = await this.backend.send(op);
           } catch (e) {
             const kind = classifyError(e);
             if (kind === 'network') {
-              op.status = 'pending';
-              await Store.persistQueue();
+              // authRetried remis à zéro : une prochaine expiration de session aura droit à son rafraîchissement
+              await Store.putOp({ ...op, status: 'pending', authRetried: false });
               this.state.online = false;
               this.scheduleRetry();
               this.resolvePendingAsQueued();
               return;
             }
-            if (kind === 'auth' && !op.authRetried) {
-              op.status = 'pending';
-              op.authRetried = true;
-              await Store.persistQueue();
-              const r = await this.backend.refreshAuth();
-              if (r === 'ok') continue;
-              if (r === 'invalid') this.state.needsLogin = true;
-              else this.scheduleRetry();
-              this.resolvePendingAsQueued();
-              return;
+            if (kind === 'auth') {
+              // premier refus : on rafraîchit la session et on réessaie une fois
+              const r = op.authRetried ? 'retried' : await this.backend.refreshAuth();
+              if (r === 'ok') {
+                await Store.putOp({ ...op, status: 'pending', authRetried: true });
+                continue;
+              }
+              if (r === 'network') {
+                await Store.putOp({ ...op, status: 'pending' });
+                this.scheduleRetry();
+                this.resolvePendingAsQueued();
+                return;
+              }
+              if (r === 'invalid') {
+                await Store.putOp({ ...op, status: 'pending', authRetried: false });
+                this.state.needsLogin = true;
+                this.resolvePendingAsQueued();
+                return;
+              }
+              // session valide mais la base refuse encore : c'est un vrai refus
             }
             if (kind === 'schema') {
-              op.status = 'pending';
-              await Store.persistQueue();
+              await Store.putOp({ ...op, status: 'pending', authRetried: false });
               this.state.lastError = friendlyError(e, op);
               this.resolvePendingAsQueued();
               return;
             }
-            op.status = 'failed';
-            op.error = { code: e.code || '', message: friendlyError(e, op), at: new Date().toISOString() };
-            await Store.persistQueue();
+            const failed = { ...op, status: 'failed', authRetried: false, error: { code: e.code || '', message: friendlyError(e, op), at: new Date().toISOString() } };
+            if (e.code === 'P3D10') Store.forgetMissing(op);
+            await Store.putOp(failed);
             Store.rebuild();
-            this.resolveWaiter(op.id, { state: 'failed', error: op.error });
+            this.resolveWaiter(failed, { state: 'failed', error: failed.error });
             continue;
           }
+          Store.applyConfirmedDelete(op);
           Store.mergeBundle(bundle);
-          Store.Q = Store.Q.filter((o) => o.id !== op.id);
-          await Store.persistQueue();
+          await Store.removeOp(op.id);
           Store.persistSnapshot();
           Store.rebuild();
           this.state.online = true;
           this.state.lastConfirmAt = new Date().toISOString();
           this.retryDelay = 0;
-          this.resolveWaiter(op.id, { state: 'confirmed' });
+          this.resolveWaiter(op, { state: 'confirmed', tombstoned: !!(bundle && bundle.tombstoned) });
           if (bundle && bundle.pullAfter) setTimeout(() => this.pull(), 50);
         }
       });
@@ -255,7 +292,7 @@ const Sync = {
   },
 
   async pull({ reconcile = false } = {}) {
-    if (!this.backend || !this.backend.ready() || this.state.pulling) return;
+    if (!this.backend || !this.backend.ready() || this.state.pulling || this.state.needsLogin) return;
     this.state.pulling = true;
     this.emit();
     const startedAt = Date.now();
@@ -268,25 +305,31 @@ const Sync = {
       for (const [t, rows] of results) {
         Store.upsertRows(t, rows);
         let max = since[t] || null;
-        for (const r of rows) if (r.updated_at && (!max || time(r.updated_at) > time(max))) max = r.updated_at;
-        if (max) Store.meta.lastPull = { ...Store.meta.lastPull, [t]: max };
+        for (const r of rows) if (r.updated_at && (!max || tsMicros(r.updated_at) > tsMicros(max))) max = r.updated_at;
+        if (max && max !== since[t]) {
+          Store.meta.lastPull = { ...Store.meta.lastPull, [t]: max };
+          Store.dirty.add(t);
+        }
       }
       const needReconcile = reconcile || !Store.meta.lastReconcile || Date.now() - Store.meta.lastReconcile > 10 * 60000;
       if (needReconcile) {
         const idLists = await mapLimit(TABLES, 4, async (t) => [t, await this.backend.pullIds(t)]);
         for (const [t, ids] of idLists) Store.reconcile(t, ids, startedAt);
         Store.meta.lastReconcile = Date.now();
+        Store.markMeta();
       }
-      Store.dirty.add('settings');
+      // Compte neuf : réglages par défaut seulement si la base n'en a vraiment aucun
+      if (!firstRow(Store.S.settings) && !Store.Q.some((o) => o.type === 'settings.init' || o.type === 'settings.save')) {
+        const rows = await this.backend.pullTable('settings');
+        if (rows.length) Store.upsertRows('settings', rows);
+        else this.enqueue('settings.init', { ...DEFAULT_SETTINGS }, { wait: 0, silent: true });
+      }
       await Store.persistSnapshotNow();
       Store.rebuild();
       this.state.online = true;
       this.state.lastPullAt = new Date().toISOString();
       this.state.lastError = null;
       this.state.firstPullDone = true;
-      if (!firstRow(Store.S.settings) && !Store.Q.some((o) => o.type === 'settings.save')) {
-        this.enqueue('settings.save', { ...DEFAULT_SETTINGS }, { wait: 0 });
-      }
     } catch (e) {
       const kind = classifyError(e);
       if (kind === 'network') {
@@ -306,6 +349,8 @@ const Sync = {
     }
   },
 
+  // Le temps réel met à jour l'écran mais n'avance jamais les repères de relecture :
+  // un évènement manqué sera rattrapé par la relecture suivante
   onRealtime(payload) {
     const t = payload.table;
     if (!TABLES.includes(t)) return;
@@ -313,11 +358,7 @@ const Sync = {
       const id = payload.old && payload.old[PK(t)];
       if (id) Store.deleteIds(t, [id]);
     } else if (payload.new) {
-      Store.upsertRows(t, [payload.new]);
-      if (payload.new.updated_at) {
-        const cur = Store.meta.lastPull[t];
-        if (!cur || time(payload.new.updated_at) > time(cur)) Store.meta.lastPull = { ...Store.meta.lastPull, [t]: payload.new.updated_at };
-      }
+      Store.upsertRows(t, [payload.new], { source: 'realtime' });
     }
     this.realtimeRebuild();
   },
@@ -337,18 +378,14 @@ const Sync = {
   async retryOp(opId) {
     const op = Store.Q.find((o) => o.id === opId);
     if (!op) return;
-    op.status = 'pending';
-    op.error = null;
-    op.authRetried = false;
-    await Store.persistQueue();
+    await Store.putOp({ ...op, status: 'pending', error: null, authRetried: false });
     Store.rebuild();
     this.emit();
     this.flush();
   },
 
   async discardOp(opId) {
-    Store.Q = Store.Q.filter((o) => o.id !== opId);
-    await Store.persistQueue();
+    await Store.removeOp(opId);
     Store.rebuild();
     this.emit();
   },

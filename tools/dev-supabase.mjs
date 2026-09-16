@@ -64,6 +64,7 @@ rest.on('exit', (code) => console.error(`PostgREST s'est arrêté (code ${code})
 const sessions = new Map();
 let offline = false;
 let expireNext = false;
+let revokedBefore = 0;
 
 function makeSession(user) {
   const now = Math.floor(Date.now() / 1000);
@@ -111,6 +112,12 @@ const server = http.createServer(async (req, res) => {
       expireNext = true;
       return json(res, 200, { expireNext });
     }
+    if (url.pathname === '/__dev/revoke') {
+      // révoque toutes les sessions : jetons de rafraîchissement invalides, jetons d'accès refusés
+      sessions.clear();
+      revokedBefore = Math.floor(Date.now() / 1000);
+      return json(res, 200, { revoked: true });
+    }
     if (url.pathname.startsWith('/auth/v1/')) {
       if (req.headers.apikey !== ANON_KEY) return json(res, 401, { message: 'Invalid API key' });
       const route = url.pathname.slice('/auth/v1/'.length);
@@ -157,6 +164,10 @@ const server = http.createServer(async (req, res) => {
       if (offline) {
         req.socket.destroy();
         return undefined;
+      }
+      const bearer = verify(String(req.headers.authorization || '').replace(/^Bearer /i, ''));
+      if (bearer && bearer.role === 'authenticated' && bearer.iat <= revokedBefore) {
+        return json(res, 401, { code: 'PGRST303', details: null, hint: null, message: 'JWT expired' });
       }
       const body = await readBody(req);
       const headers = {};

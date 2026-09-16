@@ -48,7 +48,7 @@ function eventRow(V, e, { compact = false } = {}) {
   return html`<button data-action="event-open" data-type="${e.type}" data-id="${e.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.03] sm:px-4">
     <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ${meta.cls}">${icon(meta.icon, 'w-5 h-5')}</span>
     <span class="min-w-0 flex-1">
-      <span class="block truncate text-sm font-medium text-slate-100">${e.title}</span>
+      <span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${e.title}</span>
       <span class="flex items-center gap-2 truncate text-[12px] text-slate-500">${compact ? `${fmtDate(e.date, 'short')} · ` : ''}${fmtDate(e.date, 'time')} · ${e.sub}</span>
     </span>
     <span class="flex shrink-0 flex-col items-end gap-1">
@@ -192,6 +192,8 @@ VIEWS.dashboard = {
     applyChartTheme();
     const period = App.ui.period || 'month';
     const series = monthlySeries(V, period);
+    // Peu de mois connus (ex. en janvier, vue « Année ») : on montre les points, sinon la courbe serait invisible
+    const dots = series.filter((x) => x.revenue !== null).length <= 2 ? 3 : 0;
     const c1 = document.getElementById('chart-revenue');
     if (c1) {
       App.charts.push(new Chart(c1, {
@@ -199,8 +201,8 @@ VIEWS.dashboard = {
         data: {
           labels: series.map((x) => x.label),
           datasets: [
-            { label: "Chiffre d'affaires", data: series.map((x) => round(x.revenue, 2)), borderColor: '#22D3EE', backgroundColor: fadeFill('34,211,238'), fill: true, tension: 0.35, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
-            { label: 'Bénéfice net', data: series.map((x) => round(x.net, 2)), borderColor: '#22F2A0', backgroundColor: fadeFill('34,242,160'), fill: true, tension: 0.35, borderWidth: 2, pointRadius: 0, pointHoverRadius: 4 },
+            { label: "Chiffre d'affaires", data: series.map((x) => (x.revenue === null ? null : round(x.revenue, 2))), borderColor: '#22D3EE', backgroundColor: fadeFill('34,211,238'), fill: true, tension: 0.35, borderWidth: 2, pointRadius: dots, pointHoverRadius: 4 },
+            { label: 'Bénéfice net', data: series.map((x) => (x.net === null ? null : round(x.net, 2))), borderColor: '#22F2A0', backgroundColor: fadeFill('34,242,160'), fill: true, tension: 0.35, borderWidth: 2, pointRadius: dots, pointHoverRadius: 4 },
           ],
         },
         options: {
@@ -228,7 +230,7 @@ VIEWS.dashboard = {
           indexAxis: 'y',
           responsive: true,
           maintainAspectRatio: false,
-          plugins: { legend: { display: false }, tooltip: { callbacks: { title: (items) => tops[items[0].dataIndex].name, label: (c) => ` ${fmtEur(c.parsed.x)} · ${fmtNum(tops[c.dataIndex].qty)} pièce(s)` } } },
+          plugins: { legend: { display: false }, tooltip: { callbacks: { title: (items) => tops[items[0].dataIndex].name, label: (c) => ` ${fmtEur(c.parsed.x)} · ${plural(tops[c.dataIndex].qty, 'pièce', 'pièces')}` } } },
           scales: {
             x: { grid: { color: 'rgba(148,163,184,.08)' }, border: { display: false }, ticks: { callback: (v) => fmtEur(v, { compact: true }), maxTicksLimit: 4 } },
             y: { grid: { display: false }, ticks: { color: '#CBD5E1' } },
@@ -353,7 +355,7 @@ Actions['export-open'] = () => {
       ${opt('ShoppingBag', 'Ventes détaillées (CSV)', 'Encaissé, coût de revient, frais, marge nette', 'x-sales')}
       ${opt('Printer', 'Productions et prints ratés (CSV)', 'Coûts figés, grammes, temps machine', 'x-prod')}
       ${opt('Disc3', 'Bobines (CSV)', 'Stock de filament, prix au gramme', 'x-spools')}
-      ${Store.V.pendingCount ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${Store.V.pendingCount} action(s) pas encore envoyée(s) sont incluses dans l'export.</p>` : ''}
+      ${Store.V.pendingCount ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${Store.V.pendingCount >= 2 ? `${Store.V.pendingCount} actions pas encore envoyées sont incluses` : '1 action pas encore envoyée est incluse'} dans l'export.</p>` : ''}
     </div>`,
     actions: {
       'x-json': () => saveFile(`paulo3d-sauvegarde-${stampDay}.json`, exportJson(Store.V), 'application/json'),

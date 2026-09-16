@@ -43,7 +43,10 @@ language plpgsql
 set search_path = ''
 as $$
 begin
-  new.updated_at := now();
+  -- clock_timestamp() et non now() : deux modifications de la même ligne dans une
+  -- même transaction doivent avoir deux heures différentes, sinon un appareil ne
+  -- peut pas savoir laquelle est la plus récente
+  new.updated_at := clock_timestamp();
   return new;
 end
 $$;
@@ -368,10 +371,16 @@ create index if not exists sale_allocations_lot_idx            on public.sale_al
 -- 3. Calculs tenus par la base (déclencheurs)
 -- -----------------------------------------------------------------------------
 
+-- Les déclencheurs qui lisent ou modifient une AUTRE table utilisent les droits du propriétaire
+-- (security definer) : quand Supabase supprime un compte, les suppressions en cascade sont faites
+-- par le rôle interne d'Auth, qui n'a aucun droit sur ces tables. Ils ne touchent que des lignes
+-- du même compte (clés étrangères (id, owner_id)).
+
 -- Poids restant = dernière pesée (ou poids initial) + consommations postérieures
 create or replace function public.p3d_spool_recompute()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 declare
@@ -401,6 +410,7 @@ $$;
 create or replace function public.p3d_movement_touch_spool()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -418,6 +428,7 @@ $$;
 create or replace function public.p3d_lot_recompute()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -431,6 +442,7 @@ $$;
 create or replace function public.p3d_touch_lot()
 returns trigger
 language plpgsql
+security definer
 set search_path = ''
 as $$
 begin
@@ -460,7 +472,7 @@ begin
 end
 $$;
 
--- Horodatage updated_at sur toutes les tables
+-- Horodatage updated_at sur toutes les tables (heure réelle, précise à la microseconde)
 do $$
 declare
   t text;
@@ -468,8 +480,101 @@ begin
   foreach t in array array['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
                            'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']
   loop
+    execute format('alter table public.%I alter column updated_at set default clock_timestamp()', t);
     execute format('drop trigger if exists p3d_a_touch on public.%I', t);
     execute format('create trigger p3d_a_touch before update on public.%I for each row execute function public.p3d_touch_updated_at()', t);
+  end loop;
+end
+$$;
+
+-- Lignes supprimées : une action rejouée plus tard (réponse perdue, appareil resté
+-- hors-ligne) ne doit pas faire revenir une vente, une production ou une bobine supprimée
+create table if not exists public.deleted_rows (
+  owner_id   uuid not null,
+  table_name text not null,
+  row_id     uuid not null,
+  deleted_at timestamptz not null default clock_timestamp(),
+  primary key (owner_id, table_name, row_id)
+);
+
+create or replace function public.p3d_remember_delete()
+returns trigger
+language plpgsql
+security definer
+set search_path = ''
+as $$
+declare
+  v_row uuid;
+begin
+  -- un retrait de stock est rejoué par son groupe (une action = plusieurs lignes)
+  if tg_table_name = 'stock_adjustments' then
+    v_row := old.group_id;
+  else
+    v_row := old.id;
+  end if;
+  insert into public.deleted_rows (owner_id, table_name, row_id)
+  values (old.owner_id, tg_table_name, v_row)
+  on conflict do nothing;
+  return null;
+end
+$$;
+
+create or replace function public.p3d_block_resurrection()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.deleted_rows d
+              where d.owner_id = new.owner_id and d.table_name = tg_table_name and d.row_id = new.id) then
+    return null;
+  end if;
+  return new;
+end
+$$;
+
+-- Second contrôle, APRÈS l'ajout : si la suppression a été validée pendant que l'ajout attendait
+-- (même ligne supprimée sur un autre appareil au même instant), le contrôle « avant » ne pouvait
+-- pas encore la voir. L'ajout est alors annulé au lieu de faire revenir la ligne.
+create or replace function public.p3d_resurrection_check()
+returns trigger
+language plpgsql
+set search_path = ''
+as $$
+begin
+  if exists (select 1 from public.deleted_rows d
+              where d.owner_id = new.owner_id and d.table_name = tg_table_name and d.row_id = new.id) then
+    raise exception using errcode = 'P3D10', message = 'Cet élément a été supprimé sur un autre appareil.';
+  end if;
+  return null;
+end
+$$;
+
+create or replace function public.p3d_is_deleted(p_table text, p_id uuid)
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$
+  select exists (select 1 from public.deleted_rows d
+                  where d.owner_id = (select auth.uid()) and d.table_name = p_table and d.row_id = p_id)
+$$;
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['machines', 'spools', 'templates', 'productions', 'production_stock', 'stock_adjustments', 'sales']
+  loop
+    execute format('drop trigger if exists p3d_z_remember_delete on public.%I', t);
+    execute format('create trigger p3d_z_remember_delete after delete on public.%I for each row execute function public.p3d_remember_delete()', t);
+  end loop;
+  foreach t in array array['machines', 'spools', 'templates']
+  loop
+    execute format('drop trigger if exists p3d_0_block_resurrection on public.%I', t);
+    execute format('create trigger p3d_0_block_resurrection before insert on public.%I for each row execute function public.p3d_block_resurrection()', t);
+    execute format('drop trigger if exists p3d_z_resurrection_check on public.%I', t);
+    execute format('create trigger p3d_z_resurrection_check after insert on public.%I for each row execute function public.p3d_resurrection_check()', t);
   end loop;
 end
 $$;
@@ -554,13 +659,28 @@ declare
   v_at   timestamptz := coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now());
   v_c    jsonb;
   v_g    numeric;
+  v_template uuid := nullif(p ->> 'template_id', '')::uuid;
+  v_machine  uuid := nullif(p ->> 'machine_id', '')::uuid;
+  v_spool    uuid;
 begin
   perform public.p3d_require_user();
   if v_id is null then
     raise exception using errcode = 'P3D09', message = 'Identifiant de production manquant.';
   end if;
+  -- Déjà enregistrée ? Vérifié AVANT le registre des suppressions : une suppression en cours
+  -- (pas encore validée) laisse la ligne visible ici ; une suppression validée est visible au registre.
   if exists (select 1 from public.productions where id = v_id) then
     return public.p3d_production_bundle(v_id);
+  end if;
+  if public.p3d_is_deleted('productions', v_id) then
+    return jsonb_build_object('tombstoned', true);
+  end if;
+  -- Template ou machine supprimés entre-temps (autre appareil) : la production garde son nom et ses coûts
+  if v_template is not null and public.p3d_is_deleted('templates', v_template) then
+    v_template := null;
+  end if;
+  if v_machine is not null and public.p3d_is_deleted('machines', v_machine) then
+    v_machine := null;
   end if;
 
   begin
@@ -571,10 +691,10 @@ begin
       hardware_cost, machine_cost, labor_cost, total_cost, unit_cost,
       consumption, note, occurred_at)
     values (
-      v_id, v_kind, nullif(p ->> 'template_id', '')::uuid, btrim(p ->> 'item_name'),
+      v_id, v_kind, v_template, btrim(p ->> 'item_name'),
       (p ->> 'quantity')::integer,
       coalesce(nullif(p ->> 'failed_pct', '')::numeric, 100), nullif(p ->> 'failure_reason', ''),
-      nullif(p ->> 'machine_id', '')::uuid,
+      v_machine,
       coalesce(nullif(p ->> 'machine_rate', '')::numeric, 0), coalesce(nullif(p ->> 'labor_rate', '')::numeric, 0),
       coalesce(nullif(p ->> 'grams_total', '')::numeric, 0), coalesce(nullif(p ->> 'purge_g_total', '')::numeric, 0),
       coalesce(nullif(p ->> 'print_time_min_total', '')::numeric, 0), coalesce(nullif(p ->> 'labor_min_total', '')::numeric, 0),
@@ -594,17 +714,19 @@ begin
     if v_g < 0 then
       raise exception using errcode = 'P3D09', message = 'Consommation négative refusée.';
     end if;
-    if nullif(v_c ->> 'spool_id', '') is not null and v_g > 0 then
+    v_spool := nullif(v_c ->> 'spool_id', '')::uuid;
+    -- bobine supprimée entre-temps (possible seulement si elle n'avait aucun historique) : rien à déduire
+    if v_spool is not null and v_g > 0 and not public.p3d_is_deleted('spools', v_spool) then
       insert into public.spool_movements (id, spool_id, production_id, kind, delta_g, occurred_at)
       values (coalesce(nullif(v_c ->> 'movement_id', '')::uuid, gen_random_uuid()),
-              (v_c ->> 'spool_id')::uuid, v_id, v_kind, -v_g, v_at);
+              v_spool, v_id, v_kind, -v_g, v_at);
     end if;
   end loop;
 
   if v_kind = 'production' then
     insert into public.production_stock (id, production_id, template_id, item_name, unit_cost, quantity, occurred_at)
     values (coalesce(nullif(p ->> 'lot_id', '')::uuid, gen_random_uuid()), v_id,
-            nullif(p ->> 'template_id', '')::uuid, btrim(p ->> 'item_name'),
+            v_template, btrim(p ->> 'item_name'),
             coalesce(nullif(p ->> 'unit_cost', '')::numeric, 0), (p ->> 'quantity')::integer, v_at);
   end if;
 
@@ -669,10 +791,16 @@ declare
   v_spool uuid := (p ->> 'spool_id')::uuid;
 begin
   perform public.p3d_require_user();
-  insert into public.spool_movements (id, spool_id, kind, measured_g, note, occurred_at)
-  values (v_id, v_spool, 'weigh', (p ->> 'measured_g')::numeric, nullif(p ->> 'note', ''),
-          coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))
-  on conflict (id) do nothing;
+  if not exists (select 1 from public.spool_movements where id = v_id) then
+    -- pesée d'une bobine supprimée entre-temps sur un autre appareil
+    if public.p3d_is_deleted('spools', v_spool) then
+      return jsonb_build_object('tombstoned', true);
+    end if;
+    insert into public.spool_movements (id, spool_id, kind, measured_g, note, occurred_at)
+    values (v_id, v_spool, 'weigh', (p ->> 'measured_g')::numeric, nullif(p ->> 'note', ''),
+            coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))
+    on conflict (id) do nothing;
+  end if;
 
   return jsonb_build_object(
     'spool_movements', coalesce((select jsonb_agg(to_jsonb(m)) from public.spool_movements m where m.id = v_id), '[]'::jsonb),
@@ -688,14 +816,24 @@ language plpgsql
 set search_path = ''
 as $$
 declare
-  v_id uuid := coalesce(nullif(p ->> 'id', '')::uuid, gen_random_uuid());
+  v_id       uuid := coalesce(nullif(p ->> 'id', '')::uuid, gen_random_uuid());
+  v_template uuid := nullif(p ->> 'template_id', '')::uuid;
 begin
   perform public.p3d_require_user();
-  insert into public.production_stock (id, template_id, item_name, unit_cost, quantity, note, occurred_at)
-  values (v_id, nullif(p ->> 'template_id', '')::uuid, btrim(p ->> 'item_name'),
-          coalesce(nullif(p ->> 'unit_cost', '')::numeric, 0), (p ->> 'quantity')::integer,
-          nullif(p ->> 'note', ''), coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))
-  on conflict (id) do nothing;
+  -- existence d'abord, registre des suppressions ensuite (voir p3d_launch_production)
+  if not exists (select 1 from public.production_stock where id = v_id) then
+    if public.p3d_is_deleted('production_stock', v_id) then
+      return jsonb_build_object('tombstoned', true);
+    end if;
+    if v_template is not null and public.p3d_is_deleted('templates', v_template) then
+      v_template := null;
+    end if;
+    insert into public.production_stock (id, template_id, item_name, unit_cost, quantity, note, occurred_at)
+    values (v_id, v_template, btrim(p ->> 'item_name'),
+            coalesce(nullif(p ->> 'unit_cost', '')::numeric, 0), (p ->> 'quantity')::integer,
+            nullif(p ->> 'note', ''), coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))
+    on conflict (id) do nothing;
+  end if;
 
   return jsonb_build_object(
     'production_stock', coalesce((select jsonb_agg(to_jsonb(l)) from public.production_stock l where l.id = v_id), '[]'::jsonb)
@@ -722,8 +860,17 @@ begin
   if v_group is null then
     raise exception using errcode = 'P3D09', message = 'Identifiant de retrait manquant.';
   end if;
+  -- deux envois simultanés du même retrait : le second attend puis voit le premier
+  perform pg_advisory_xact_lock(hashtextextended('p3d_adjust:' || v_group::text, 0));
 
   if not exists (select 1 from public.stock_adjustments where group_id = v_group) then
+    -- retrait déjà fait puis effacé (production supprimée ensuite) : on ne le refait pas
+    if public.p3d_is_deleted('stock_adjustments', v_group) then
+      return jsonb_build_object('tombstoned', true);
+    end if;
+    if v_template is not null and public.p3d_is_deleted('templates', v_template) then
+      v_template := null;
+    end if;
     if v_need is null or v_need < 1 then
       raise exception using errcode = 'P3D09', message = 'Quantité à retirer invalide.';
     end if;
@@ -747,7 +894,7 @@ begin
 
     if v_need > 0 then
       raise exception using errcode = 'P3D01',
-        message = format('Stock insuffisant pour « %s » : il manque %s pièce(s).', v_name, v_need);
+        message = format('Stock insuffisant pour « %s » : il manque %s %s.', v_name, v_need, case when v_need >= 2 then 'pièces' else 'pièce' end);
     end if;
   end if;
 
@@ -806,8 +953,12 @@ begin
   if v_id is null then
     raise exception using errcode = 'P3D09', message = 'Identifiant de vente manquant.';
   end if;
+  -- existence d'abord, registre des suppressions ensuite (voir p3d_launch_production)
   if exists (select 1 from public.sales where id = v_id) then
     return public.p3d_sale_bundle(v_id);
+  end if;
+  if public.p3d_is_deleted('sales', v_id) then
+    return jsonb_build_object('tombstoned', true);
   end if;
   if jsonb_typeof(p -> 'items') is distinct from 'array' or jsonb_array_length(p -> 'items') = 0 then
     raise exception using errcode = 'P3D09', message = 'Une vente doit contenir au moins un article.';
@@ -827,6 +978,9 @@ begin
   loop
     v_item_id  := coalesce(nullif(v_item ->> 'id', '')::uuid, gen_random_uuid());
     v_template := nullif(v_item ->> 'template_id', '')::uuid;
+    if v_template is not null and public.p3d_is_deleted('templates', v_template) then
+      v_template := null; -- template supprimé entre-temps : ses lots sont retrouvés par leur nom
+    end if;
     v_name     := btrim(coalesce(v_item ->> 'item_name', ''));
     v_qty      := (v_item ->> 'quantity')::integer;
     v_price    := coalesce(nullif(v_item ->> 'unit_price', '')::numeric, 0);
@@ -858,7 +1012,7 @@ begin
       end loop;
       if v_need > 0 then
         raise exception using errcode = 'P3D01',
-          message = format('Stock insuffisant pour « %s » : il manque %s pièce(s).', v_name, v_need);
+          message = format('Stock insuffisant pour « %s » : il manque %s %s.', v_name, v_need, case when v_need >= 2 then 'pièces' else 'pièce' end);
       end if;
     else
       v_item_cogs := v_qty * coalesce(nullif(v_item ->> 'unit_cost', '')::numeric, 0);
@@ -935,6 +1089,15 @@ begin
 end
 $$;
 
+-- Registre des suppressions : rempli uniquement par la base (déclencheur), lecture seule pour les comptes
+alter table public.deleted_rows enable row level security;
+drop policy if exists p3d_deleted_select on public.deleted_rows;
+create policy p3d_deleted_select on public.deleted_rows for select to authenticated
+  using (owner_id = (select auth.uid()));
+drop policy if exists p3d_deleted_insert on public.deleted_rows;
+revoke all on table public.deleted_rows from anon, authenticated;
+grant select on table public.deleted_rows to authenticated;
+
 grant usage on schema public to authenticated;
 
 revoke execute on function
@@ -942,8 +1105,10 @@ revoke execute on function
   public.p3d_weigh_spool(jsonb), public.p3d_add_stock(jsonb), public.p3d_adjust_stock(jsonb),
   public.p3d_record_sale(jsonb), public.p3d_delete_sale(uuid),
   public.p3d_production_bundle(uuid), public.p3d_sale_bundle(uuid), public.p3d_require_user(),
+  public.p3d_is_deleted(text, uuid),
   public.p3d_spool_recompute(), public.p3d_movement_touch_spool(), public.p3d_lot_recompute(),
-  public.p3d_touch_lot(), public.p3d_machine_single_default(), public.p3d_touch_updated_at()
+  public.p3d_touch_lot(), public.p3d_machine_single_default(), public.p3d_touch_updated_at(),
+  public.p3d_remember_delete(), public.p3d_block_resurrection(), public.p3d_resurrection_check()
 from public, anon;
 
 grant execute on function
@@ -951,7 +1116,7 @@ grant execute on function
   public.p3d_weigh_spool(jsonb), public.p3d_add_stock(jsonb), public.p3d_adjust_stock(jsonb),
   public.p3d_record_sale(jsonb), public.p3d_delete_sale(uuid),
   public.p3d_production_bundle(uuid), public.p3d_sale_bundle(uuid), public.p3d_require_user(),
-  public.p3d_version(), public.p3d_materials_valid(jsonb)
+  public.p3d_is_deleted(text, uuid), public.p3d_version(), public.p3d_materials_valid(jsonb)
 to authenticated;
 
 

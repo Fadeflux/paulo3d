@@ -41,7 +41,7 @@ function piecesTab(V) {
   const value = sum(ready, (g) => g.value);
   return html`
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <p class="text-sm text-slate-400"><span class="font-semibold text-slate-100">${fmtNum(sum(ready, (g) => g.qty))}</span> pièce(s) prête(s) · valeur ${fmtEur(value)}</p>
+      <p class="text-sm text-slate-400"><span class="font-semibold text-slate-100">${fmtNum(sum(ready, (g) => g.qty))}</span> ${sum(ready, (g) => g.qty) >= 2 ? 'pièces prêtes' : 'pièce prête'} · valeur ${fmtEur(value)}</p>
       ${btn('Stock déjà fabriqué', { size: 'sm', variant: 'ghost', icon: 'PackagePlus', action: 'st-add-stock' })}
     </div>
     ${ready.length ? html`<div class="card divide-y divide-white/[0.05] overflow-hidden">${ready.map((g) => stockRow(V, g))}</div>`
@@ -56,16 +56,19 @@ function stockRow(V, g) {
   return html`<div class="flex items-center gap-3 px-3 py-3 sm:px-4">
     <div class="h-12 w-12 shrink-0 overflow-hidden rounded-xl bg-ink-850 p-1">${layeredThumb(t ? t.materials : [], t ? t.photo : null)}</div>
     <div class="min-w-0 flex-1">
-      <div class="truncate text-sm font-semibold text-slate-100">${g.item_name}</div>
-      <div class="truncate text-[12px] text-slate-500">${g.qty > 0 ? `coût moyen ${fmtEur(g.avgCost)} · valeur ${fmtEur(g.value)}` : `${fmtNum(g.produced)} produite(s) au total`}${pending ? ' · en attente d’envoi' : ''}</div>
+      <div class="line-clamp-2 text-sm font-semibold leading-snug text-slate-100">${g.item_name}</div>
+      <div class="mt-0.5 flex flex-wrap items-baseline gap-x-1.5 text-[12px] text-slate-500">
+        <span class="w-full font-semibold tabular-nums sm:hidden ${g.qty > 0 ? 'text-neon' : 'text-slate-500'}">${fmtNum(g.qty)} en stock</span>
+        <span>${g.qty > 0 ? `coût moyen ${fmtEur(g.avgCost)}` : `${plural(g.produced, 'produite', 'produites')} au total`}</span>${g.qty > 0 ? html`<span class="hidden sm:inline">· valeur ${fmtEur(g.value)}</span>` : ''}${pending ? html`<span class="text-amber-300">· en attente d’envoi</span>` : ''}
+      </div>
     </div>
-    <div class="text-right">
+    <div class="hidden text-right sm:block">
       <div class="font-display text-2xl font-bold tabular-nums ${g.qty > 0 ? 'text-slate-50' : 'text-slate-600'}">${fmtNum(g.qty)}</div>
       <div class="text-[11px] text-slate-500">en stock</div>
     </div>
     <div class="flex shrink-0 gap-1">
-      ${g.qty > 0 ? btn('', { size: 'icon', variant: 'primary', icon: 'ShoppingBag', action: 'stock-sell', attrs: `data-key="${g.key}"`, title: 'Vendre' }) : g.template_id ? btn('', { size: 'icon', icon: 'Printer', action: 'tpl-produce', attrs: `data-id="${g.template_id}"`, title: 'Produire' }) : ''}
-      ${btn('', { size: 'icon', variant: 'ghost', icon: 'EllipsisVertical', action: 'stock-menu', attrs: `data-key="${g.key}"`, title: 'Plus d’actions' })}
+      ${g.qty > 0 ? btn('', { size: 'icon', variant: 'primary', icon: 'ShoppingBag', action: 'stock-sell', attrs: { 'data-key': g.key }, title: 'Vendre' }) : g.template_id ? btn('', { size: 'icon', icon: 'Printer', action: 'tpl-produce', attrs: { 'data-id': g.template_id }, title: 'Produire' }) : ''}
+      ${btn('', { size: 'icon', variant: 'ghost', icon: 'EllipsisVertical', action: 'stock-menu', attrs: { 'data-key': g.key }, title: 'Plus d’actions' })}
     </div>
   </div>`;
 }
@@ -118,7 +121,7 @@ function salesTab(V) {
     </div>
     ${sales.length ? html`<div class="card divide-y divide-white/[0.05] overflow-hidden">${sales.map((s) => html`<button data-action="sale-open" data-id="${s.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03] sm:px-4">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-cyan-300 bg-cyan-400/10">${icon('ShoppingBag', 'w-5 h-5')}</span>
-        <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-slate-100">${saleTitle(V, s)}</span>
+        <span class="min-w-0 flex-1"><span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${saleTitle(V, s)}</span>
           <span class="block truncate text-[12px] text-slate-500">${fmtDate(s.occurred_at, 'short')} · ${channelOf(st, s.channel).name}${s.customer ? ` · ${s.customer}` : ''}</span></span>
         <span class="shrink-0 text-right"><span class="block font-display text-sm font-semibold tabular-nums text-slate-100">${fmtEur(s.amount)}</span>
           <span class="block text-[12px] tabular-nums ${toNum(s.net_margin) >= 0 ? 'text-neon' : 'text-rose-300'}">${fmtEur(s.net_margin, { sign: true })}</span>
@@ -144,7 +147,7 @@ function productionsTab(V) {
       const meta = p.kind === 'failure' ? EVENT_META.failure : EVENT_META.production;
       return html`<button data-action="production-open" data-id="${p.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03] sm:px-4">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ${meta.cls}">${icon(meta.icon, 'w-5 h-5')}</span>
-        <span class="min-w-0 flex-1"><span class="block truncate text-sm font-medium text-slate-100">${p.item_name} × ${fmtNum(p.quantity)}</span>
+        <span class="min-w-0 flex-1"><span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${p.item_name} × ${fmtNum(p.quantity)}</span>
           <span class="block truncate text-[12px] text-slate-500">${fmtDate(p.occurred_at, 'short')} · ${p.kind === 'failure' ? `raté à ${fmtNum(p.failed_pct)} %` : 'production'} · ${fmtG(p.grams_total)}</span></span>
         <span class="shrink-0 text-right"><span class="block font-display text-sm font-semibold tabular-nums ${p.kind === 'failure' ? 'text-rose-300' : 'text-slate-100'}">${fmtEur(p.total_cost)}</span>
           <span class="block text-[12px] text-slate-500">${p.kind === 'failure' ? 'perte' : `${fmtEur(p.unit_cost)} / pièce`}</span>
@@ -160,7 +163,7 @@ Actions['production-open'] = (el) => openProductionDetails(el.dataset.id);
 /* ---------- lancer une production / déclarer un print raté ---------- */
 function openProductionModal({ kind = 'production', templateId = null }) {
   const V0 = Store.V;
-  const templates = valuesOf(V0.templates).filter((t) => !t.archived).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   if (!templates.length) {
     Modal.open({
       title: kind === 'failure' ? 'Déclarer un print raté' : 'Lancer une production',
@@ -208,7 +211,8 @@ function openProductionModal({ kind = 'production', templateId = null }) {
     failedPct: d.failedPct,
     machineId: d.machineId || null,
     spoolIds: d.spoolIds,
-    occurredAt: fromLocalInput(d.occurredAt),
+    // date non modifiée : heure exacte de la validation (la saisie ne va qu'à la minute)
+    occurredAt: d.dateEdited ? fromLocalInput(d.occurredAt) : new Date().toISOString(),
     note: d.note,
     reason: d.reason,
   });
@@ -259,7 +263,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
           <span class="flex min-w-0 items-center gap-2 text-sm text-slate-200"><span class="h-3.5 w-3.5 shrink-0 rounded-full ring-1 ring-white/20" style="background:${safeHex(l.color_hex)}"></span><span class="truncate">${l.material} ${l.color_name || ''}</span></span>
           <span class="font-display text-sm font-semibold tabular-nums text-slate-100">${fmtG(need)}</span>
         </div>
-        ${selectInput('spool', opts, chosen || '', { attrs: `data-line="${i}"` })}
+        ${selectInput('spool', opts, chosen || '', { attrs: { 'data-line': i } })}
         ${s ? html`<div class="mt-1.5 flex items-center justify-between text-[12px]"><span class="text-slate-500">Après : ${fmtG(toNum(s.remaining_weight_g) - need)}</span>${toNum(s.remaining_weight_g) - need < settingsOf(V).spool_critical_g ? html`<span class="text-amber-300">bobine presque vide</span>` : ''}</div>` : ''}
       </div>`;
     })}</div>`;
@@ -276,7 +280,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
       return {
         body: html`<div class="grid gap-5 lg:grid-cols-2">
           <div class="space-y-4">
-            ${field('Template', selectInput('templateId', templates.map((x) => ({ value: x.id, label: x.name })), d.templateId))}
+            ${field('Template', selectInput('templateId', templates.map((x) => ({ value: x.id, label: x.archived ? `${x.name} (archivé)` : x.name })), d.templateId))}
             <div class="flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
               <div class="h-14 w-14 shrink-0 overflow-hidden rounded-xl bg-ink-900 p-1">${layeredThumb(t.materials, t.photo)}</div>
               <div class="min-w-0 flex-1 text-[12px] text-slate-400"><div class="truncate text-sm font-semibold text-slate-100">${t.name}</div>${fmtG(templateCost(V, t).grams)} · ${fmtDuration(t.print_time_min)} par pièce · stock actuel ${fmtNum(stockForTemplate(V, t.id))}</div>
@@ -296,7 +300,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
               <p class="mt-1 text-[12px] text-slate-500">Seule la part imprimée est déduite (filament et temps machine).</p>
             </div>
             <div><span class="label">Cause</span><div class="flex flex-wrap gap-1.5">${FAILURE_REASONS.map((r) => html`<button data-action="reason" data-value="${r}" class="chip ${d.reason === r ? 'chip-active' : ''}">${r}</button>`)}</div></div>` : ''}
-            ${field('Machine', selectInput('machineId', [{ value: '', label: `Par défaut (${fmtNum(settingsOf(V).machine_rate, 2)} €/h)` }, ...activeMachines(V).map((mc) => ({ value: mc.id, label: `${mc.name} (${fmtNum(mc.hourly_rate, 2)} €/h)` }))], d.machineId))}
+            ${field('Machine', selectInput('machineId', machineOptions(V, d.machineId), d.machineId))}
             <details class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.showMore ? raw('open') : ''}>
               <summary class="cursor-pointer list-none text-sm text-slate-300">Date et note <span class="text-slate-500">· ${fmtDate(fromLocalInput(d.occurredAt), 'long')}</span></summary>
               <div class="mt-3 space-y-3">
@@ -339,6 +343,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
         d.machineId = el.value;
       } else if (name === 'occurredAt') {
         d.occurredAt = el.value;
+        d.dateEdited = el.value !== toLocalInput();
         d.showMore = true;
       } else if (name === 'note') {
         d.note = el.value;
@@ -375,7 +380,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
         const res = await runOp('production.launch', payload, {
           success: d.kind === 'failure'
             ? `Print raté enregistré : ${fmtEur(payload.total_cost)} de perte`
-            : `Production enregistrée : ${fmtNum(q)} × ${t.name} ajoutée(s) au stock`,
+            : `Production enregistrée : ${t.name} +${fmtNum(q)} en stock`,
         });
         d.busy = false;
         el.disabled = false;
@@ -419,7 +424,7 @@ function openSaleModal({ templateId = null, itemName = null }) {
     channel: d.channel,
     customer: d.customer,
     note: d.note,
-    occurred_at: fromLocalInput(d.occurredAt),
+    occurred_at: d.dateEdited ? fromLocalInput(d.occurredAt) : new Date().toISOString(),
     shipping_charged: toNum(d.shipping_charged),
     shipping_cost: toNum(d.shipping_cost),
     packaging_cost: toNum(d.packaging_cost),
@@ -453,7 +458,7 @@ function openSaleModal({ templateId = null, itemName = null }) {
         <div><div class="text-[12px] font-medium text-slate-400">Marge nette réelle</div><div class="font-display text-3xl font-bold tabular-nums ${tone}">${fmtEur(p.net)}</div></div>
         <div class="text-right font-display text-lg font-semibold tabular-nums ${tone}">${fmtPct(p.marginPct)}</div>
       </div>
-      ${p.shortages.length ? html`<div class="mt-3 space-y-1">${p.shortages.map((s) => html`<p class="flex gap-2 text-[12px] text-rose-200">${icon('CircleAlert', 'w-4 h-4 shrink-0')}Stock insuffisant pour « ${s.item_name} » : il manque ${fmtNum(s.shortage)} pièce(s).</p>`)}</div>` : ''}
+      ${p.shortages.length ? html`<div class="mt-3 space-y-1">${p.shortages.map((s) => html`<p class="flex gap-2 text-[12px] text-rose-200">${icon('CircleAlert', 'w-4 h-4 shrink-0')}Stock insuffisant pour « ${s.item_name} » : il manque ${plural(s.shortage, 'pièce', 'pièces')}.</p>`)}</div>` : ''}
     </div>`;
   };
 
@@ -463,12 +468,12 @@ function openSaleModal({ templateId = null, itemName = null }) {
     return html`<div class="space-y-2">${d.items.map((it, i) => {
       if (!it.from_stock) {
         return html`<div class="rounded-2xl border border-violet-400/20 bg-violet-500/[0.04] p-3">
-          <div class="mb-2 flex items-center justify-between"><span class="text-[12px] font-semibold text-violet-200">Pièce sur mesure (hors stock)</span>${d.items.length > 1 ? btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'item-remove', attrs: `data-i="${i}"`, title: 'Retirer', cls: 'h-8 w-8' }) : ''}</div>
-          ${inputText('item_name', it.item_name, { placeholder: 'Description de la pièce', attrs: `data-i="${i}"` })}
+          <div class="mb-2 flex items-center justify-between"><span class="text-[12px] font-semibold text-violet-200">Pièce sur mesure (hors stock)</span>${d.items.length > 1 ? btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'item-remove', attrs: { 'data-i': i }, title: 'Retirer', cls: 'h-8 w-8' }) : ''}</div>
+          ${inputText('item_name', it.item_name, { placeholder: 'Description de la pièce', attrs: { 'data-i': i } })}
           <div class="mt-2 grid grid-cols-3 gap-2">
-            ${field('Quantité', inputNum('quantity', it.quantity, { placeholder: '1', inputmode: 'numeric', attrs: `data-i="${i}"` }))}
-            ${field('Prix unitaire', inputNum('unit_price', it.unit_price, { suffix: '€', attrs: `data-i="${i}"` }))}
-            ${field('Coût unitaire', inputNum('unit_cost', it.unit_cost, { suffix: '€', attrs: `data-i="${i}"` }))}
+            ${field('Quantité', inputNum('quantity', it.quantity, { placeholder: '1', inputmode: 'numeric', attrs: { 'data-i': i } }))}
+            ${field('Prix unitaire', inputNum('unit_price', it.unit_price, { suffix: '€', attrs: { 'data-i': i } }))}
+            ${field('Coût unitaire', inputNum('unit_cost', it.unit_cost, { suffix: '€', attrs: { 'data-i': i } }))}
           </div>
         </div>`;
       }
@@ -478,12 +483,12 @@ function openSaleModal({ templateId = null, itemName = null }) {
       if (it.item_name && !cur) opts.push({ value: '__missing', label: `${it.item_name} — 0 en stock`, disabled: true });
       return html`<div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
         <div class="flex items-center gap-2">
-          ${selectInput('stock_key', opts, cur ? cur.key : it.item_name ? '__missing' : '', { attrs: `data-i="${i}"`, cls: 'min-w-0 flex-1' })}
-          ${d.items.length > 1 ? btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'item-remove', attrs: `data-i="${i}"`, title: 'Retirer' }) : ''}
+          ${selectInput('stock_key', opts, cur ? cur.key : it.item_name ? '__missing' : '', { attrs: { 'data-i': i }, cls: 'min-w-0 flex-1' })}
+          ${d.items.length > 1 ? btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'item-remove', attrs: { 'data-i': i }, title: 'Retirer' }) : ''}
         </div>
         <div class="mt-2 grid grid-cols-2 gap-2">
-          ${field('Quantité', inputNum('quantity', it.quantity, { placeholder: '1', inputmode: 'numeric', attrs: `data-i="${i}"` }))}
-          ${field('Prix unitaire encaissé', inputNum('unit_price', it.unit_price, { suffix: '€', attrs: `data-i="${i}"` }))}
+          ${field('Quantité', inputNum('quantity', it.quantity, { placeholder: '1', inputmode: 'numeric', attrs: { 'data-i': i } }))}
+          ${field('Prix unitaire encaissé', inputNum('unit_price', it.unit_price, { suffix: '€', attrs: { 'data-i': i } }))}
         </div>
         ${!cur && it.template_id ? html`<p class="mt-2 text-[12px] text-amber-300">Aucune pièce en stock pour ce modèle. ${raw(`<button class="underline" data-action="produce-first" data-tid="${esc(it.template_id)}">Lancer une production</button>`)} ou vends-la « sur mesure ».</p>` : ''}
       </div>`;
@@ -555,6 +560,7 @@ function openSaleModal({ templateId = null, itemName = null }) {
         d[name] = num();
       } else if (name === 'customer' || name === 'note' || name === 'occurredAt') {
         d[name] = el.value;
+        if (name === 'occurredAt') d.dateEdited = el.value !== toLocalInput();
         return;
       }
       if (name !== 'platform_fee') {
@@ -710,7 +716,7 @@ function openProductionDetails(id) {
           <div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-4">
             <div class="font-semibold text-slate-100">${p.item_name} × ${fmtNum(p.quantity)}</div>
             <div class="text-[12px] text-slate-500">${isFail ? `arrêté à ${fmtNum(p.failed_pct)} %${p.failure_reason ? ` · ${p.failure_reason}` : ''}` : `${fmtEur(p.unit_cost)} par pièce`} · ${machine ? machine.name : `machine à ${fmtNum(p.machine_rate, 2)} €/h`}</div>
-            ${lot ? html`<div class="mt-2 text-[13px] text-slate-300">${fmtNum(lot.qty_available)} en stock · ${fmtNum(sold)} vendue(s)${lot.quantity - lot.qty_available - sold > 0 ? ` · ${fmtNum(lot.quantity - lot.qty_available - sold)} retirée(s)` : ''}</div>` : ''}
+            ${lot ? html`<div class="mt-2 text-[13px] text-slate-300">${fmtNum(lot.qty_available)} en stock · ${plural(sold, 'vendue', 'vendues')}${lot.quantity - lot.qty_available - sold > 0 ? ` · ${plural(lot.quantity - lot.qty_available - sold, 'retirée', 'retirées')}` : ''}</div>` : ''}
           </div>
           <div><h3 class="section-title mb-2">Filament consommé</h3>
             <div class="divide-y divide-white/[0.05] rounded-2xl border border-white/[0.06]">${(p.consumption || []).map((c) => html`<div class="flex items-center gap-3 px-3 py-2.5">
@@ -748,11 +754,12 @@ function openProductionDetails(id) {
 /* ---------- stock déjà fabriqué ---------- */
 function openAddStockModal({ templateId = null, itemName = null }) {
   const V0 = Store.V;
-  const templates = valuesOf(V0.templates).filter((t) => !t.archived).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  // le template demandé est proposé même s'il est archivé : la liste affiche toujours celui qui recevra le stock
+  const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   const t0 = templateId ? V0.templates.get(templateId) : null;
   const d = {
-    mode: t0 || templates.length ? 'template' : 'free',
-    templateId: t0 ? t0.id : templates[0] ? templates[0].id : null,
+    mode: t0 ? 'template' : itemName ? 'free' : templates.length ? 'template' : 'free',
+    templateId: t0 ? t0.id : !itemName && templates[0] ? templates[0].id : null,
     itemName: itemName || '',
     quantity: 1,
     unitCost: null,
@@ -773,7 +780,7 @@ function openAddStockModal({ templateId = null, itemName = null }) {
       body: html`<div class="space-y-4">
         ${templates.length ? segmented('mode', [{ value: 'template', label: 'Depuis un template' }, { value: 'free', label: 'Autre pièce' }], d.mode, { action: 'mode', cls: 'w-full [&>button]:flex-1' }) : ''}
         ${d.mode === 'template'
-          ? field('Template', selectInput('templateId', templates.map((t) => ({ value: t.id, label: t.name })), d.templateId))
+          ? field('Template', selectInput('templateId', templates.map((t) => ({ value: t.id, label: t.archived ? `${t.name} (archivé)` : t.name })), d.templateId))
           : field('Nom de la pièce', inputText('itemName', d.itemName, { placeholder: 'Pièce' }))}
         <div class="grid grid-cols-2 gap-3">
           ${field('Quantité', inputNum('quantity', d.quantity, { inputmode: 'numeric', placeholder: '1' }))}
@@ -796,6 +803,7 @@ function openAddStockModal({ templateId = null, itemName = null }) {
         return;
       }
       d[el.name] = el.hasAttribute('data-num') ? (el.value.trim() === '' ? null : parseNum(el.value)) : el.value;
+      if (el.name === 'occurredAt') d.dateEdited = el.value !== toLocalInput();
     },
     actions: {
       cancel: (el, e, m) => m.close(),
@@ -813,7 +821,8 @@ function openAddStockModal({ templateId = null, itemName = null }) {
         if (!(q >= 1)) return setFieldError(m.el, 'quantity', 'Au moins 1.');
         if (d.unitCost !== null && (!Number.isFinite(d.unitCost) || d.unitCost < 0)) return setFieldError(m.el, 'unitCost', 'Coût invalide.');
         d.busy = true;
-        const res = await runOp('stock.add', { id: uuid(), template_id: t ? t.id : null, item_name: name, unit_cost: roundDb(toNum(d.unitCost), 4), quantity: q, note: String(d.note || '').trim() || null, occurred_at: fromLocalInput(d.occurredAt) }, { success: `${fmtNum(q)} × ${name} ajouté(s) au stock` });
+        const occurredAt = d.dateEdited ? fromLocalInput(d.occurredAt) : new Date().toISOString();
+        const res = await runOp('stock.add', { id: uuid(), template_id: t ? t.id : null, item_name: name, unit_cost: roundDb(toNum(d.unitCost), 4), quantity: q, note: String(d.note || '').trim() || null, occurred_at: occurredAt }, { success: `${name} : +${fmtNum(q)} en stock` });
         d.busy = false;
         if (opAccepted(res)) m.close();
       },
@@ -852,7 +861,7 @@ function openAdjustStockModal(group) {
         const q = Math.round(toNum(d.quantity, 0));
         if (!(q >= 1) || q > group.qty) return setFieldError(m.el, 'quantity', `Entre 1 et ${group.qty}.`);
         d.busy = true;
-        const res = await runOp('stock.adjust', { id: uuid(), template_id: group.template_id, item_name: group.item_name, quantity: q, reason: d.reason, note: String(d.note || '').trim() || null, occurred_at: new Date().toISOString() }, { success: `${fmtNum(q)} pièce(s) retirée(s) du stock` });
+        const res = await runOp('stock.adjust', { id: uuid(), template_id: group.template_id, item_name: group.item_name, quantity: q, reason: d.reason, note: String(d.note || '').trim() || null, occurred_at: new Date().toISOString() }, { success: `${plural(q, 'pièce retirée', 'pièces retirées')} du stock` });
         d.busy = false;
         if (opAccepted(res)) m.close();
       },

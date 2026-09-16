@@ -3,6 +3,7 @@
    ============================================================================= */
 
 const QR_URL = 'https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js';
+const QR_SRI = '__SRI_QR__';
 
 function settingsSection(id, ic, title, subtitle, body, footer = '') {
   return html`<section class="card overflow-hidden" id="${id}" data-form="${id}">
@@ -49,7 +50,7 @@ VIEWS.parametres = {
               : html`${btn('Autre appareil (QR code)', { size: 'sm', variant: 'ghost', icon: 'QrCode', action: 'pair-device' })}${btn('Modifier la connexion', { size: 'sm', icon: 'Pencil', action: 'connect-supabase' })}`)}
 
           ${isDemo ? '' : settingsSection('s-compte', 'UserRound', 'Compte', backend && backend.email ? backend.email : '', html`<p class="text-[13px] text-slate-400">Tu peux rester connecté sur plusieurs appareils avec le même compte : tout est synchronisé.</p>
-            ${pendingOps ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${pendingOps} action(s) pas encore envoyée(s) : reste connecté jusqu'à ce qu'elles partent.</p>` : ''}`,
+            ${pendingOps ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${pendingOps >= 2 ? `${pendingOps} actions pas encore envoyées : reste connecté jusqu'à ce qu'elles partent.` : "1 action pas encore envoyée : reste connecté jusqu'à ce qu'elle parte."}</p>` : ''}`,
             html`${btn('Changer le mot de passe', { size: 'sm', variant: 'ghost', icon: 'KeyRound', action: 'change-password' })}${btn('Se déconnecter', { size: 'sm', variant: 'danger', icon: 'LogOut', action: 'logout' })}`)}
 
           ${settingsSection('s-costs', 'Zap', "Coûts de l'atelier", 'Utilisés pour tous les calculs de coût de revient', html`
@@ -59,7 +60,7 @@ VIEWS.parametres = {
               ${field("Taux main-d'œuvre", inputNum('labor_rate', st.labor_rate, { suffix: '€/h' }), { hint: 'Post-traitement, finitions.' })}
             </div>
             ${field('Prix du filament par défaut', inputNum('filament_price_kg', st.filament_price_kg, { suffix: '€/kg' }), { hint: 'Utilisé seulement si aucune bobine ne correspond à une matière.' })}`,
-            btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-settings', attrs: 'data-section="s-costs"' }))}
+            btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-settings', attrs: { 'data-section': 's-costs' } }))}
 
           ${settingsSection('s-machines', 'Printer', 'Machines', 'Chacune avec son coût horaire', machines.length
             ? html`<div class="divide-y divide-white/[0.05] rounded-2xl border border-white/[0.06]">${machines.map((mc) => html`<button data-action="machine-edit" data-id="${mc.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03] ${mc.archived ? 'opacity-60' : ''}">
@@ -86,21 +87,21 @@ VIEWS.parametres = {
               { value: '1', label: "À l'euro supérieur" },
               { value: 'none', label: 'Pas d’arrondi' },
             ], st.price_rounding))}`,
-            btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-settings', attrs: 'data-section="s-pricing"' }))}
+            btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-settings', attrs: { 'data-section': 's-pricing' } }))}
 
           ${settingsSection('s-alerts', 'BellRing', 'Alertes bobines', 'Couleur des bobines selon le poids restant', html`
             <div class="grid grid-cols-2 gap-3">
               ${field('Orange sous', inputNum('spool_low_g', st.spool_low_g, { suffix: 'g', inputmode: 'numeric' }), { hint: 'Bientôt vide.' })}
               ${field('Rouge sous', inputNum('spool_critical_g', st.spool_critical_g, { suffix: 'g', inputmode: 'numeric' }), { hint: 'Stock critique.' })}
             </div>`,
-            btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-settings', attrs: 'data-section="s-alerts"' }))}
+            btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-settings', attrs: { 'data-section': 's-alerts' } }))}
 
           ${settingsSection('s-channels', 'Store', 'Canaux de vente', 'Commission retirée automatiquement de la marge nette', html`
             <div class="space-y-2" id="channels-list">${(App.ui.channelsDraft || st.sales_channels).map((c, i) => html`<div class="grid grid-cols-[1fr_5.5rem_5.5rem_2.5rem] items-end gap-2">
-              ${field(i === 0 ? 'Nom' : '', inputText('ch_name', c.name, { maxlength: 40, attrs: `data-ch="${i}"` }))}
-              ${field(i === 0 ? '%' : '', inputNum('ch_pct', c.pct, { suffix: '%', attrs: `data-ch="${i}"` }))}
-              ${field(i === 0 ? 'Fixe' : '', inputNum('ch_fixed', c.fixed, { suffix: '€', attrs: `data-ch="${i}"` }))}
-              ${btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'channel-remove', attrs: `data-ch="${i}"`, title: 'Retirer ce canal' })}
+              ${field(i === 0 ? 'Nom' : '', inputText('ch_name', c.name, { maxlength: 40, attrs: { 'data-ch': i } }))}
+              ${field(i === 0 ? '%' : '', inputNum('ch_pct', c.pct, { suffix: '%', attrs: { 'data-ch': i } }))}
+              ${field(i === 0 ? 'Fixe' : '', inputNum('ch_fixed', c.fixed, { suffix: '€', attrs: { 'data-ch': i } }))}
+              ${btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'channel-remove', attrs: { 'data-ch': i }, title: 'Retirer ce canal' })}
             </div>`)}</div>
             <p class="text-[12px] text-slate-500">Renseigne les frais réels de chaque plateforme (ils changent régulièrement). 0 = aucune commission.</p>`,
             html`${btn('Ajouter un canal', { size: 'sm', variant: 'ghost', icon: 'Plus', action: 'channel-add' })}${btn('Enregistrer', { size: 'sm', variant: 'primary', icon: 'Check', action: 'save-channels' })}`)}
@@ -167,19 +168,11 @@ function channelsDraft() {
   return App.ui.channelsDraft;
 }
 
-Actions['channel-add'] = () => {
-  channelsDraft().push({ id: `c${Date.now().toString(36)}`, name: '', pct: 0, fixed: 0 });
-  App.render();
-};
-Actions['channel-remove'] = (el) => {
+// Ce qui est tapé dans les champs → brouillon (avant tout réaffichage, sinon la saisie serait perdue)
+function readChannelInputs() {
   const list = channelsDraft();
-  if (list.length <= 1) return toast('Garde au moins un canal de vente.', { tone: 'warn' });
-  list.splice(+el.dataset.ch, 1);
-  App.render();
-};
-Actions['save-channels'] = async () => {
   const section = document.getElementById('s-channels');
-  const list = channelsDraft();
+  if (!section) return list;
   for (const inp of $$('[data-ch]', section)) {
     const i = +inp.dataset.ch;
     if (!list[i] || !inp.name) continue;
@@ -187,6 +180,21 @@ Actions['save-channels'] = async () => {
     if (inp.name === 'ch_pct') list[i].pct = inp.value.trim() === '' ? 0 : parseNum(inp.value);
     if (inp.name === 'ch_fixed') list[i].fixed = inp.value.trim() === '' ? 0 : parseNum(inp.value);
   }
+  return list;
+}
+
+Actions['channel-add'] = () => {
+  readChannelInputs().push({ id: `c${Date.now().toString(36)}`, name: '', pct: 0, fixed: 0 });
+  App.render();
+};
+Actions['channel-remove'] = (el) => {
+  const list = readChannelInputs();
+  if (list.length <= 1) return toast('Garde au moins un canal de vente.', { tone: 'warn' });
+  list.splice(+el.dataset.ch, 1);
+  App.render();
+};
+Actions['save-channels'] = async () => {
+  const list = readChannelInputs();
   for (const c of list) {
     if (!c.name) return toast('Chaque canal doit avoir un nom.', { tone: 'bad' });
     if (!Number.isFinite(c.pct) || c.pct < 0 || c.pct >= 100 || !Number.isFinite(c.fixed) || c.fixed < 0) return toast(`Frais invalides pour « ${c.name} ».`, { tone: 'bad' });
@@ -209,7 +217,7 @@ function openMachineModal(machine) {
     size: 'sm',
     render: () => ({
       body: html`<div class="space-y-4">
-        ${field('Nom', inputText('name', d.name, { placeholder: 'P1S atelier', maxlength: 80, attrs: 'autofocus' }))}
+        ${field('Nom', inputText('name', d.name, { placeholder: 'P1S atelier', maxlength: 80, attrs: { autofocus: true } }))}
         ${field('Modèle', inputText('model', d.model, { placeholder: 'Bambu Lab P1S + AMS', maxlength: 80 }))}
         ${field('Coût horaire', inputNum('hourly_rate', d.hourly_rate, { suffix: '€/h' }), { hint: 'Électricité + usure. Ex. : 0,15 kW × 0,25 €/kWh + usure ≈ 0,30 €/h.' })}
         <label class="flex items-center justify-between gap-3 rounded-2xl border border-white/[0.06] bg-ink-850 p-3"><span class="text-sm text-slate-200">Machine par défaut</span><input type="checkbox" name="is_default" class="toggle" ${d.is_default ? raw('checked') : ''}/></label>
@@ -255,7 +263,9 @@ Actions.logout = async () => {
   const ok = await confirmBox({
     title: 'Se déconnecter ?',
     message: pending
-      ? `${pending} action(s) ne sont pas encore enregistrées dans la base. Elles restent gardées sur cet appareil et partiront quand tu te reconnecteras avec ce compte.`
+      ? (pending >= 2
+        ? `${pending} actions ne sont pas encore enregistrées dans la base. Elles restent gardées sur cet appareil et partiront quand tu te reconnecteras avec ce compte.`
+        : "1 action n'est pas encore enregistrée dans la base. Elle reste gardée sur cet appareil et partira quand tu te reconnecteras avec ce compte.")
       : 'Les données restent dans la base. Tu pourras te reconnecter à tout moment.',
     confirm: 'Se déconnecter',
     tone: pending ? 'danger' : 'warn',
@@ -268,7 +278,9 @@ Actions['clear-local'] = async () => {
   const ok = await confirmBox({
     title: 'Vider les données de cet appareil ?',
     message: pending
-      ? `Attention : ${pending} action(s) n'ont PAS été enregistrées dans la base et seront perdues définitivement. Les données déjà dans Supabase ne sont pas touchées.`
+      ? (pending >= 2
+        ? `Attention : ${pending} actions n'ont PAS été enregistrées dans la base et seront perdues définitivement. Les données déjà dans Supabase ne sont pas touchées.`
+        : "Attention : 1 action n'a PAS été enregistrée dans la base et sera perdue définitivement. Les données déjà dans Supabase ne sont pas touchées.")
       : "La copie locale est effacée puis rechargée depuis la base. Rien n'est supprimé dans Supabase.",
     confirm: pending ? 'Vider quand même' : 'Vider et recharger',
   });
@@ -302,7 +314,7 @@ Actions['pair-device'] = async () => {
   const link = `${location.origin}${location.pathname}#setup=${b64urlEncode(JSON.stringify({ u: cfg.url, k: cfg.key }))}`;
   let svg = '';
   try {
-    if (!globalThis.qrcode) await loadScript(QR_URL);
+    if (!globalThis.qrcode) await loadScript(QR_URL, QR_SRI);
     const qr = qrcode(0, 'M');
     qr.addData(link);
     qr.make();

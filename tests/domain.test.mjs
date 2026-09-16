@@ -205,6 +205,75 @@ test('statistiques : CA, coûts, bénéfice, rebut', () => {
   close(b.material + b.machine + b.labor + b.hardware + b.other, s.cogs, 1e-3);
 });
 
+test('courbe mensuelle : aucun mois futur compté à 0 €', () => {
+  const f = fixture();
+  let V = view(applyOps(app, f.ops));
+  const t = V.templates.get(f.T);
+  const prod = app.planProduction(V, { template: t, quantity: 4, occurredAt: '2026-09-02T10:00:00Z' }).payload;
+  const ops = [...f.ops, ['production.launch', prod]];
+  V = view(applyOps(app, ops));
+  const sale = app.planSale(V, { occurred_at: '2026-09-05T10:00:00Z', items: [{ id: app.uuid(), template_id: f.T, item_name: t.name, quantity: 2, unit_price: 15 }] }).payload;
+  V = view(applyOps(app, [...ops, ['sale.record', sale]]));
+  const now = new Date(2026, 8, 16, 12, 0);
+
+  const month = app.monthlySeries(V, 'month', now);
+  assert.equal(month.length, 12);
+  assert.equal(month[0].label, 'oct. 25');
+  assert.equal(month[11].label, 'sept. 26');
+  close(month[11].revenue, 30);
+  assert.ok(month.every((m) => m.revenue !== null));
+
+  const prev = app.monthlySeries(V, 'prev', now);
+  assert.equal(prev[11].label, 'août 26');
+  close(prev[11].revenue, 0);
+
+  const year = app.monthlySeries(V, 'year', now);
+  deepEqual(year.map((m) => m.label), ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.']);
+  close(year[8].revenue, 30);
+  deepEqual(year.slice(9).map((m) => [m.revenue, m.net]), [[null, null], [null, null], [null, null]]);
+
+  const all = app.monthlySeries(V, 'all', now);
+  assert.equal(all.length, 12);
+  assert.equal(all[11].label, 'sept. 26');
+  const old = app.planSale(V, { occurred_at: '2001-01-10T10:00:00Z', items: [{ id: app.uuid(), item_name: 'Ancienne', quantity: 1, unit_price: 5, from_stock: false }] }).payload;
+  const Vold = view(applyOps(app, [...ops, ['sale.record', sale], ['sale.record', old]]));
+  const allOld = app.monthlySeries(Vold, 'all', now);
+  assert.equal(allOld.length, 120, 'une date très ancienne ne crée pas des centaines de points');
+  assert.equal(allOld[119].label, 'sept. 26');
+});
+
+test('export CSV : montants au centime arrondis comme l’écran et la base (négatifs compris)', () => {
+  const S = applyOps(app, [
+    ['stock.add', { id: 'l2', template_id: null, item_name: 'Porte-clés', unit_cost: 3.375, quantity: 5, occurred_at: '2026-09-01T10:00:00Z' }],
+    ['sale.record', { id: 's9', channel: 'direct', occurred_at: '2026-09-10T10:00:00Z', shipping_charged: 0, shipping_cost: 0, packaging_cost: 0, platform_fee: 0, items: [{ id: 'i9', item_name: 'Porte-clés', quantity: 1, unit_price: 3.25, from_stock: true }] }],
+  ], U);
+  const V = { ...S, pending: new Set() };
+  close(V.sales.get('s9').net_margin, -0.125);
+  const row = app.exportCsvSales(V).split(/\r?\n/)[1].split(';');
+  assert.equal(row[6], '3,38', 'coût 3,375 → 3,38');
+  assert.equal(row[10], '-0,13', 'marge −0,125 → −0,13 (comme à l’écran)');
+  assert.equal(spaces(app.fmtEur(-0.125)), '-0,13 €');
+});
+
+test('champs en euros : « 22,50 » affiché, mais 0 et les entiers restent tels quels (frappe au bout du champ)', () => {
+  const shown = (v) => /value="([^"]*)"/.exec(String(app.inputNum('x', v, { suffix: '€' })))[1];
+  assert.equal(shown(22.5), '22,50');
+  assert.equal(shown(1.2345), '1,2345', 'jamais arrondi');
+  assert.equal(shown(0), '0');
+  assert.equal(shown(20), '20');
+  assert.equal(shown(null), '');
+  assert.equal(app.parseNum(`${shown(0)}2`), 2, '« 0 » + « 2 » = 2 (et non « 0,002 » = 0)');
+  assert.equal(/value="([^"]*)"/.exec(String(app.inputNum('x', 0.3, { suffix: '€/h' })))[1], '0,30');
+  assert.equal(/value="([^"]*)"/.exec(String(app.inputNum('x', 2.5, { suffix: '×' })))[1], '2,5', 'pas un montant');
+});
+
+test('accords : décidés sur le nombre affiché', () => {
+  assert.equal(app.plural(0, 'pièce', 'pièces'), '0 pièce');
+  assert.equal(app.plural(1, 'pièce', 'pièces'), '1 pièce');
+  assert.equal(app.plural(2, 'pièce', 'pièces'), '2 pièces');
+  assert.equal(app.plural(1.5, 'pièce', 'pièces'), '2 pièces');
+});
+
 test('export CSV : Excel français et formules neutralisées', () => {
   const csv = app.toCsv(['A', 'B', 'C'], [[1.5, '=SUM(A1)', 'x;y']]);
   assert.ok(csv.startsWith('﻿A;B;C'));
@@ -299,7 +368,8 @@ test('import PrusaSlicer / Orca : fin de G-code', () => {
   const r = app.parseGcodeText(g);
   close(r.timeMin, 62.05);
   deepEqual(r.filaments.map((x) => [x.type, x.color, x.grams]), [['PETG', '#FF8000', 12.34]]);
-  assert.equal(r.purgeG, 1.5);
+  assert.equal(r.purgeG, 0, 'la tour est déjà dans « filament used [g] » : pas de double comptage');
+  assert.equal(r.purgeIncluded, true);
 });
 
 test('import texte collé (français)', () => {
@@ -353,6 +423,95 @@ test('classement des erreurs réseau / session / refus', () => {
   assert.equal(app.classifyError(e({ message: 'Could not find the function', status: 404, code: 'PGRST202' })), 'schema');
   assert.equal(app.classifyError(e({ message: 'upstream', status: 503 })), 'network');
   assert.equal(app.friendlyError(e({ code: '23503' }), { type: 'spool.delete' }), "Impossible de supprimer : cet élément est utilisé dans l'historique. Archive-le plutôt.");
+  // un refus de la base dont le texte contient « connexion » ou « time out » reste un refus
+  assert.equal(app.classifyError(e({ message: 'Stock insuffisant pour « Boîtier de connexion » : il manque 1 pièce(s).', status: 400, code: 'P3D01' })), 'business');
+  assert.equal(app.classifyError(e({ message: 'Stock insuffisant pour « Time Out edition »', status: 400, code: 'P3D01' })), 'business');
+  assert.equal(app.classifyError(e({ message: 'permission denied', status: 403, code: '42501' })), 'auth');
+  assert.equal(app.classifyError(e({ message: 'quelconque', status: 0 })), 'network');
+});
+
+test('horodatage à la microseconde', () => {
+  assert.equal(app.tsMicros('2026-09-16T10:00:00.123456+00:00') - app.tsMicros('2026-09-16T10:00:00.123455+00:00'), 1);
+  assert.equal(app.tsMicros('2026-09-16T12:00:00.5+02:00'), app.tsMicros('2026-09-16T10:00:00.500000Z'));
+  assert.equal(app.tsMicros('2026-09-16 10:00:00+00'), app.tsMicros('2026-09-16T10:00:00Z'));
+  assert.equal(app.tsMicros(null), 0);
+});
+
+function freshStore() {
+  app.Store.S = app.emptyState();
+  app.Store.tombstones = new Map();
+  app.Store.receivedAt = new Map();
+  app.Store.dirty = new Set();
+  return app.Store;
+}
+
+test('temps réel : une version plus ancienne n’écrase jamais la plus récente', () => {
+  const S = freshStore();
+  const base = { id: 's1', owner_id: U, channel: 'etsy', amount: 0, cogs: 0, shipping_cost: 4, packaging_cost: 1, platform_fee: 0, shipping_charged: 0, created_at: '2026-09-16T10:00:00.100000+00:00' };
+  const insertEvt = { ...base, updated_at: '2026-09-16T10:00:00.100000+00:00' };
+  const final = { ...base, amount: 45, cogs: 13.41, net_margin: 26.59, updated_at: '2026-09-16T10:00:00.100734+00:00' };
+  // la réponse HTTP (version finale) arrive d'abord, puis l'évènement d'insertion en retard
+  S.upsertRows('sales', [final]);
+  S.upsertRows('sales', [insertEvt], { source: 'realtime' });
+  assert.equal(S.S.sales.get('s1').amount, 45);
+  // dans l'autre ordre aussi
+  const S2 = freshStore();
+  S2.upsertRows('sales', [insertEvt], { source: 'realtime' });
+  S2.upsertRows('sales', [{ ...final, net_margin: undefined }], { source: 'realtime' });
+  assert.equal(S2.S.sales.get('s1').amount, 45);
+  assert.equal(S2.S.sales.get('s1').net_margin, 26.59, 'colonne calculée recalculée si absente');
+});
+
+test('temps réel : colonnes absentes gardées, nombres en texte convertis', () => {
+  const S = freshStore();
+  S.upsertRows('templates', [{ id: 't1', owner_id: U, name: 'Vase', photo: 'data:image/webp;base64,AAAA', catalog_price: 12.9, updated_at: '2026-09-16T10:00:00.000001Z' }]);
+  S.upsertRows('templates', [{ id: 't1', owner_id: U, name: 'Vase', archived: true, catalog_price: '13.90', updated_at: '2026-09-16T10:00:01.000001Z' }], { source: 'realtime' });
+  const t = S.S.templates.get('t1');
+  assert.equal(t.photo, 'data:image/webp;base64,AAAA', 'grande valeur inchangée non renvoyée par le temps réel');
+  assert.equal(t.archived, true);
+  assert.equal(t.catalog_price, 13.9);
+  const rev = S.rev;
+  S.upsertRows('templates', [{ ...t }]);
+  assert.equal(S.rev, rev, 'même version, même contenu : aucun rafraîchissement inutile');
+});
+
+test('suppression : les évènements en retard ne font pas réapparaître la ligne', () => {
+  const S = freshStore();
+  S.upsertRows('sales', [{ id: 's9', owner_id: U, amount: 10, cogs: 1, updated_at: '2026-09-16T10:00:00.000002Z' }]);
+  S.deleteIds('sales', ['s9']);
+  S.upsertRows('sales', [{ id: 's9', owner_id: U, amount: 10, cogs: 1, updated_at: '2026-09-16T10:00:00.000002Z' }], { source: 'realtime' });
+  assert.equal(S.S.sales.has('s9'), false);
+});
+
+test('suppression confirmée appliquée même si la base ne renvoie rien (renvoi)', () => {
+  const f = fixture();
+  let V = view(applyOps(app, f.ops));
+  const t = V.templates.get(f.T);
+  const prod = app.planProduction(V, { template: t, quantity: 3, occurredAt: '2026-09-02T10:00:00Z' }).payload;
+  const ops = [...f.ops, ['production.launch', prod]];
+  V = view(applyOps(app, ops));
+  const sale = app.planSale(V, { items: [{ id: app.uuid(), template_id: f.T, item_name: t.name, quantity: 2, unit_price: 15 }] }).payload;
+  ops.push(['sale.record', sale]);
+  const confirmed = applyOps(app, ops);
+  const S = freshStore();
+  for (const tb of app.TABLES) S.S[tb] = confirmed[tb];
+  assert.equal(S.S.production_stock.get(prod.lot_id).qty_available, 1);
+  S.applyConfirmedDelete({ type: 'sale.delete', payload: { id: sale.id } });
+  S.mergeBundle({ deleted: { sales: [] } });
+  assert.equal(S.S.sales.has(sale.id), false);
+  assert.equal([...S.S.sale_items.values()].filter((i) => i.sale_id === sale.id).length, 0);
+  assert.equal(S.S.sale_allocations.size, 0);
+  assert.equal(S.S.production_stock.get(prod.lot_id).qty_available, 3, 'les pièces reviennent en stock');
+});
+
+test('attributs HTML : toujours échappés', () => {
+  const out = String(app.attrList({ 'data-key': 'n:Support 27" "><img src=x onerror=alert(1)>', autofocus: true, hidden: false }));
+  assert.ok(!out.includes('<img'));
+  assert.ok(out.includes('data-key="n:Support 27&quot;'));
+  assert.ok(out.includes('autofocus'));
+  assert.ok(!out.includes('hidden'));
+  assert.throws(() => app.attrList('onclick="x"'));
+  assert.throws(() => app.attrList({ 'on click': 'x' }));
 });
 
 test('icônes : toutes celles demandées sont présentes dans le build', () => {

@@ -15,14 +15,17 @@ function wrapError(error, status) {
   return e;
 }
 
+const AUTH_CODES = ['42501', 'PGRST301', 'PGRST302', 'PGRST303'];
+
+// Classe une erreur. Le texte du message n'est JAMAIS utilisé quand la base a répondu :
+// un refus « Stock insuffisant pour « Boîtier de connexion » » reste un refus, pas une coupure.
 function classifyError(e) {
   if (e instanceof OpError) return 'business';
   const status = toNum(e && e.status, 0);
   const code = String((e && e.code) || '');
-  const msg = String((e && e.message) || '');
   if (e && e.name === 'AbortError') return 'network';
-  if (status === 0 || /failed to fetch|networkerror|load failed|network request failed|fetch failed|timed? ?out|aborted|connexion/i.test(msg)) return 'network';
-  if (status === 401 || code === '42501' || code === 'PGRST301' || code === 'PGRST302' || code === 'PGRST303' || /jwt|token is expired/i.test(msg)) return 'auth';
+  if (!status) return 'network';
+  if (status === 401 || AUTH_CODES.includes(code)) return 'auth';
   if (code === 'PGRST202' || code === 'PGRST205' || code === '42P01' || code === '42883' || code === 'PGRST204') return 'schema';
   if (status >= 500 || status === 408 || status === 429 || code === '57014') return 'network';
   return 'business';
@@ -72,13 +75,33 @@ function normalizeSupaUrl(input) {
   }
 }
 
+// La base n'a modifié AUCUNE ligne : la ligne n'existe plus (supprimée sur un autre appareil, ou jamais
+// créée parce que sa création a été refusée). Ce n'est pas un succès : l'action est refusée, avec la raison.
+function nothingSaved(rows, what, deleted) {
+  if (Array.isArray(rows) && rows.length) return rows;
+  throw new OpError('P3D10', `${what} n'existe plus (${deleted} sur un autre appareil ?) : modification non enregistrée.`);
+}
+
 const REMOTE = {
+  async 'settings.init'(b, p) {
+    const row = { owner_id: b.userId, ...pick(p, SETTINGS_FIELDS) };
+    await b.exec(b.sb.from('settings').upsert(row, { onConflict: 'owner_id', ignoreDuplicates: true }));
+    return { settings: await b.exec(b.sb.from('settings').select('*')) };
+  },
   async 'settings.save'(b, p) {
     const row = { owner_id: b.userId, ...pick(p, SETTINGS_FIELDS) };
     return { settings: await b.exec(b.sb.from('settings').upsert(row, { onConflict: 'owner_id' }).select()) };
   },
+  async 'spool.patch'(b, p) {
+    const fields = pick(p.fields || {}, SPOOL_FIELDS.filter((f) => f !== 'id'));
+    return { spools: nothingSaved(await b.exec(b.sb.from('spools').update(fields).eq('id', p.id).select()), 'Cette bobine', 'supprimée') };
+  },
+  async 'template.patch'(b, p) {
+    const fields = pick(p.fields || {}, TEMPLATE_FIELDS.filter((f) => f !== 'id'));
+    return { templates: nothingSaved(await b.exec(b.sb.from('templates').update(fields).eq('id', p.id).select()), 'Ce template', 'supprimé') };
+  },
   async 'machine.save'(b, p) {
-    const rows = await b.exec(b.sb.from('machines').upsert(pick(p, MACHINE_FIELDS), { onConflict: 'id' }).select());
+    const rows = nothingSaved(await b.exec(b.sb.from('machines').upsert(pick(p, MACHINE_FIELDS), { onConflict: 'id' }).select()), 'Cette machine', 'supprimée');
     const out = { machines: rows };
     if (p.is_default) out.machines = await b.pullTable('machines');
     return out;
@@ -88,7 +111,7 @@ const REMOTE = {
     return { deleted: { machines: rows.map((r) => r.id) }, pullAfter: true };
   },
   async 'spool.save'(b, p) {
-    return { spools: await b.exec(b.sb.from('spools').upsert(pick(p, SPOOL_FIELDS), { onConflict: 'id' }).select()) };
+    return { spools: nothingSaved(await b.exec(b.sb.from('spools').upsert(pick(p, SPOOL_FIELDS), { onConflict: 'id' }).select()), 'Cette bobine', 'supprimée') };
   },
   async 'spool.delete'(b, p) {
     const rows = await b.exec(b.sb.from('spools').delete().eq('id', p.id).select('id'));
@@ -98,7 +121,7 @@ const REMOTE = {
     return b.exec(b.sb.rpc('p3d_weigh_spool', { p }));
   },
   async 'template.save'(b, p) {
-    return { templates: await b.exec(b.sb.from('templates').upsert(pick(p, TEMPLATE_FIELDS), { onConflict: 'id' }).select()) };
+    return { templates: nothingSaved(await b.exec(b.sb.from('templates').upsert(pick(p, TEMPLATE_FIELDS), { onConflict: 'id' }).select()), 'Ce template', 'supprimé') };
   },
   async 'template.delete'(b, p) {
     const rows = await b.exec(b.sb.from('templates').delete().eq('id', p.id).select('id'));
@@ -160,28 +183,45 @@ class SupabaseBackend {
     return fn(this, op.payload);
   }
 
+  // Lecture des changements depuis la dernière fois. S'il y en a trop pour une page,
+  // relecture complète par identifiant (une page ne peut alors ni sauter ni doubler une ligne).
   async pullTable(table, since) {
+    if (since) {
+      let res;
+      try {
+        res = await this.sb.from(table).select('*', { count: 'exact' })
+          .gt('updated_at', new Date(time(since) - 300000).toISOString())
+          .order('updated_at', { ascending: true }).limit(PAGE);
+      } catch (e) {
+        throw wrapError({ message: e && e.message ? e.message : String(e) }, 0);
+      }
+      if (res.error) throw wrapError(res.error, res.status);
+      const rows = res.data || [];
+      if (res.count === null || res.count === undefined || res.count <= rows.length) return rows;
+    }
+    return this.pullAllById(table, '*');
+  }
+
+  // Pagination par identifiant croissant : stable même si des lignes changent pendant la lecture,
+  // et correcte même si le projet limite les réponses à moins de 1000 lignes (on lit jusqu'à une page vide)
+  async pullAllById(table, columns) {
+    const pk = PK(table);
     const out = [];
-    for (let from = 0; ; from += PAGE) {
-      let q = this.sb.from(table).select('*');
-      if (since) q = q.gt('updated_at', new Date(time(since) - 300000).toISOString());
-      q = q.order('updated_at', { ascending: true }).order(PK(table), { ascending: true }).range(from, from + PAGE - 1);
+    let last = null;
+    for (;;) {
+      let q = this.sb.from(table).select(columns).order(pk, { ascending: true }).limit(PAGE);
+      if (last !== null) q = q.gt(pk, last);
       const rows = await this.exec(q);
+      if (!rows.length) break;
       out.push(...rows);
-      if (rows.length < PAGE) break;
+      last = rows[rows.length - 1][pk];
     }
     return out;
   }
 
   async pullIds(table) {
     const pk = PK(table);
-    const ids = new Set();
-    for (let from = 0; ; from += PAGE) {
-      const rows = await this.exec(this.sb.from(table).select(pk).order(pk, { ascending: true }).range(from, from + PAGE - 1));
-      for (const r of rows) ids.add(r[pk]);
-      if (rows.length < PAGE) break;
-    }
-    return ids;
+    return new Set((await this.pullAllById(table, pk)).map((r) => r[pk]));
   }
 
   async checkSchema() {
