@@ -10,11 +10,18 @@ const REQUEST_TIMEOUT_MS = 30000;
 // Requête bloquée (réseau d'atelier instable, 4G faible) : abandon au bout de 30 s. Elle est alors
 // traitée comme une coupure (l'action reste en attente et repart plus tard) au lieu de bloquer
 // l'envoi de toutes les actions pendant plusieurs minutes.
-function fetchWithTimeout(input, init = {}) {
+async function fetchWithTimeout(input, init = {}) {
   if (init.signal || typeof AbortController === 'undefined') return fetch(input, init);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
-  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  try {
+    const res = await fetch(input, { ...init, signal: ctrl.signal });
+    // réponse lue ENTIÈREMENT sous le même délai : un téléchargement bloqué à mi-chemin est aussi abandonné
+    const body = [101, 204, 205, 304].includes(res.status) ? null : await res.arrayBuffer();
+    return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function wrapError(error, status) {

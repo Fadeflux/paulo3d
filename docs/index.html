@@ -80,7 +80,7 @@
    Paulo3D — socle : constantes, formats, HTML sûr, icônes, logo
    ============================================================================= */
 
-const APP_VERSION = "1.0.0-2a40b7be";
+const APP_VERSION = "1.0.0-62eba859";
 const SCHEMA_VERSION = 1;
 
 const LS = {
@@ -2321,11 +2321,18 @@ const REQUEST_TIMEOUT_MS = 30000;
 // Requête bloquée (réseau d'atelier instable, 4G faible) : abandon au bout de 30 s. Elle est alors
 // traitée comme une coupure (l'action reste en attente et repart plus tard) au lieu de bloquer
 // l'envoi de toutes les actions pendant plusieurs minutes.
-function fetchWithTimeout(input, init = {}) {
+async function fetchWithTimeout(input, init = {}) {
   if (init.signal || typeof AbortController === 'undefined') return fetch(input, init);
   const ctrl = new AbortController();
   const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
-  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+  try {
+    const res = await fetch(input, { ...init, signal: ctrl.signal });
+    // réponse lue ENTIÈREMENT sous le même délai : un téléchargement bloqué à mi-chemin est aussi abandonné
+    const body = [101, 204, 205, 304].includes(res.status) ? null : await res.arrayBuffer();
+    return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function wrapError(error, status) {
@@ -3302,7 +3309,10 @@ function withBusy(el, result) {
     el.classList.remove('is-busy');
     el.removeAttribute('aria-busy');
   };
-  result.then(done, done);
+  result.then(done, (e) => {
+    done();
+    console.error('[paulo3d] action interrompue', e);
+  });
   return result;
 }
 
@@ -6389,6 +6399,7 @@ function authErrorMessage(error) {
   if (/already registered|user already exists/i.test(msg) || code === 'user_already_exists') return 'Un compte existe déjà avec cet email : connecte-toi.';
   if (/password should be|weak password/i.test(msg) || code === 'weak_password') return 'Mot de passe trop faible : au moins 8 caractères, mélange lettres et chiffres.';
   if (/rate limit|too many/i.test(msg) || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') return 'Trop de tentatives : patiente quelques minutes.';
+  if (/abort/i.test(msg)) return 'Supabase ne répond pas (délai dépassé). Vérifie la connexion internet puis réessaie.';
   if (/fetch|network|load failed/i.test(msg)) return 'Pas de connexion avec Supabase. Vérifie internet.';
   return msg || 'Erreur inconnue.';
 }

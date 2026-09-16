@@ -221,7 +221,10 @@ function withBusy(el, result) {
     el.classList.remove('is-busy');
     el.removeAttribute('aria-busy');
   };
-  result.then(done, done);
+  result.then(done, (e) => {
+    done();
+    console.error('[paulo3d] action interrompue', e);
+  });
   return result;
 }
 

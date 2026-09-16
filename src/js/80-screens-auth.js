@@ -52,6 +52,7 @@ function authErrorMessage(error) {
   if (/already registered|user already exists/i.test(msg) || code === 'user_already_exists') return 'Un compte existe déjà avec cet email : connecte-toi.';
   if (/password should be|weak password/i.test(msg) || code === 'weak_password') return 'Mot de passe trop faible : au moins 8 caractères, mélange lettres et chiffres.';
   if (/rate limit|too many/i.test(msg) || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') return 'Trop de tentatives : patiente quelques minutes.';
+  if (/abort/i.test(msg)) return 'Supabase ne répond pas (délai dépassé). Vérifie la connexion internet puis réessaie.';
   if (/fetch|network|load failed/i.test(msg)) return 'Pas de connexion avec Supabase. Vérifie internet.';
   return msg || 'Erreur inconnue.';
 }

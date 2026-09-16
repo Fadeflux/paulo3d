@@ -1,6 +1,6 @@
 /* Paulo3D — service worker : l'application s'ouvre même sans réseau.
    Les données ne passent JAMAIS par ici : elles sont gérées par l'appli (IndexedDB + Supabase). */
-const VERSION = "1.0.0-2a40b7be";
+const VERSION = "1.0.0-62eba859";
 const SHELL_CACHE = `p3d-shell-${VERSION}`;
 const CDN_CACHE = 'p3d-cdn-v2';
 const SHELL_FILES = [
