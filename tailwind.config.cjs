@@ -8,6 +8,8 @@ module.exports = {
       colors: {
         ink: { 950: '#05070A', 900: '#0A0E13', 850: '#0D1218', 800: '#121922', 700: '#19222D', 600: '#243142', 500: '#334358' },
         neon: { DEFAULT: '#22F2A0', 300: '#86F9CB', 400: '#4DF7B4', 600: '#12C987', 700: '#0B8F5E' },
+        // gris secondaires éclaircis : textes de 11-13 px lisibles sur fond noir (contraste ≥ 4,5:1)
+        slate: { 500: '#7C8AA0', 600: '#64748B' },
       },
       fontFamily: {
         sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],

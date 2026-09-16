@@ -45,7 +45,7 @@ function eventRow(V, e, { compact = false } = {}) {
   const meta = EVENT_META[e.type] || EVENT_META.stock;
   const pending = V.pending.has(e.key);
   const amountTone = e.amount === null ? '' : e.type === 'sale' ? 'text-cyan-200' : e.amount < 0 ? 'text-slate-300' : 'text-neon';
-  return html`<button data-action="event-open" data-type="${e.type}" data-id="${e.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.03] sm:px-4">
+  return html`<button data-action="event-open" data-type="${e.type}" data-id="${e.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06] sm:px-4">
     <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ${meta.cls}">${icon(meta.icon, 'w-5 h-5')}</span>
     <span class="min-w-0 flex-1">
       <span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${e.title}</span>
@@ -146,8 +146,8 @@ VIEWS.dashboard = {
       </div>
 
       ${alerts.length ? html`<div class="card mt-3 p-4">
-        <div class="mb-2 flex items-center justify-between"><h2 class="flex items-center gap-2 text-sm font-semibold text-slate-100">${icon('TriangleAlert', 'w-4 h-4 text-amber-300')}Bobines à surveiller</h2><a href="#/bobines" class="text-[13px] font-medium text-neon">Voir tout</a></div>
-        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">${alerts.slice(0, 4).map(({ sp, status }) => html`<button data-action="spool-weigh" data-id="${sp.id}" class="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-ink-850 p-2.5 text-left hover:border-white/15">
+        <div class="mb-2 flex items-center justify-between"><h2 class="flex items-center gap-2 text-sm font-semibold text-slate-100">${icon('TriangleAlert', 'w-4 h-4 text-amber-300')}Bobines à surveiller</h2><a href="#/bobines" class="hit text-[13px] font-medium text-neon">Voir tout</a></div>
+        <div class="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">${alerts.slice(0, 4).map(({ sp, status }) => html`<button data-action="spool-weigh" data-id="${sp.id}" class="flex items-center gap-3 rounded-xl border border-white/[0.06] bg-ink-850 p-2.5 text-left transition hover:border-white/15 active:bg-white/[0.05]">
           ${spoolDisc(sp.color_hex, spoolPct(sp), status, 40)}
           <span class="min-w-0 flex-1"><span class="block truncate text-[13px] font-medium text-slate-100">${sp.color_name || sp.material}</span><span class="block truncate text-[12px] text-slate-500">${sp.brand} · ${sp.material}</span></span>
           <span class="text-right"><span class="block font-display text-sm font-semibold tabular-nums ${status === 'low' ? 'text-amber-300' : 'text-rose-300'}">${fmtG(Math.max(0, toNum(sp.remaining_weight_g)))}</span><span class="block text-[11px] text-slate-500">${SPOOL_STATUS[status].label}</span></span>
@@ -160,13 +160,15 @@ VIEWS.dashboard = {
             <h2 class="text-sm font-semibold text-slate-100">Chiffre d'affaires et bénéfice net</h2>
             <div class="flex items-center gap-3 text-[12px] text-slate-400"><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-cyan-400"></span>CA</span><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-neon"></span>Bénéfice</span></div>
           </div>
-          <div class="relative mt-3 h-56 sm:h-64">${globalThis.Chart ? html`<canvas id="chart-revenue" aria-label="Évolution mensuelle du chiffre d'affaires et du bénéfice"></canvas>` : chartUnavailable()}</div>
+          ${valuesOf(V.sales).length
+            ? html`<div class="relative mt-3 h-56 sm:h-64">${globalThis.Chart ? html`<canvas id="chart-revenue" role="img" aria-label="${`Évolution mensuelle du chiffre d'affaires et du bénéfice. ${range.label} : ${fmtEur(s.revenue)} encaissés, bénéfice net ${fmtEur(s.net)}.`}"></canvas>` : chartUnavailable()}</div>`
+            : html`<div class="mt-3 flex h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] text-center text-[13px] text-slate-400 sm:h-64">${icon('ChartLine', 'w-8 h-8 mb-2 text-slate-500')}La courbe apparaîtra après ta première vente.</div>`}
         </div>
         <div class="card p-4 lg:col-span-2">
           <h2 class="text-sm font-semibold text-slate-100">Top ventes</h2>
           <p class="text-[12px] text-slate-500">${range.label}, par chiffre d'affaires</p>
           ${topProducts(V, range).length
-            ? html`<div class="relative mt-3 h-56 sm:h-64">${globalThis.Chart ? html`<canvas id="chart-top" aria-label="Produits les plus vendus"></canvas>` : chartUnavailable()}</div>`
+            ? html`<div class="relative mt-3 h-56 sm:h-64">${globalThis.Chart ? html`<canvas id="chart-top" role="img" aria-label="${`Produits les plus vendus, ${range.label} : ${topProducts(V, range).slice(0, 3).map((t) => `${t.name} ${fmtEur(t.revenue)}`).join(', ')}.`}"></canvas>` : chartUnavailable()}</div>`
             : html`<div class="mt-6 flex h-48 flex-col items-center justify-center text-center text-[13px] text-slate-500">${icon('ChartBar', 'w-8 h-8 mb-2 text-slate-600')}Aucune vente sur la période.</div>`}
         </div>
       </div>
@@ -180,7 +182,7 @@ VIEWS.dashboard = {
             ${s.costs <= 0.004 ? html`<p class="text-[13px] text-slate-500">Aucun coût sur la période.</p>` : ''}</div>
         </div>
         <div class="card overflow-hidden lg:col-span-3">
-          <div class="flex items-center justify-between px-4 pt-4"><h2 class="text-sm font-semibold text-slate-100">Activité récente</h2><a href="#/historique" class="text-[13px] font-medium text-neon">Tout l'historique</a></div>
+          <div class="flex items-center justify-between px-4 pt-4"><h2 class="text-sm font-semibold text-slate-100">Activité récente</h2><a href="#/historique" class="hit text-[13px] font-medium text-neon">Tout l'historique</a></div>
           ${recent.length ? html`<div class="mt-2 divide-y divide-white/[0.05]">${recent.map((e) => eventRow(V, e, { compact: true }))}</div>`
             : html`<p class="px-4 pb-5 pt-3 text-[13px] text-slate-500">Rien pour l'instant.</p>`}
         </div>
@@ -258,6 +260,8 @@ function applyChartTheme() {
   Chart.defaults.plugins.tooltip.padding = 10;
   Chart.defaults.plugins.tooltip.titleColor = '#F1F5F9';
   Chart.defaults.plugins.tooltip.bodyColor = '#CBD5E1';
+  // animations réduites demandées par le téléphone : graphiques affichés directement
+  if (globalThis.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches) Chart.defaults.animation = false;
   chartThemed = true;
 }
 
@@ -313,7 +317,7 @@ VIEWS.historique = {
             <input class="input pl-9" placeholder="Rechercher (article, bobine, canal…)" value="${q}" data-page-input="hist-search" data-keep="hist-search" autocomplete="off"/>
           </div>
         </div>
-        <div class="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:px-0">${types.map((t) => html`<button data-action="hist-type" data-value="${t.value}" class="chip ${t.value === type ? 'chip-active' : ''}">${t.label}</button>`)}</div>
+        <div class="no-scrollbar -mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 lg:mx-0 lg:flex-wrap lg:px-0">${types.map((t) => html`<button data-action="hist-type" data-value="${t.value}" class="chip ${t.value === type ? 'chip-active' : ''}">${t.label}</button>`)}</div>
       </div>
       ${events.length ? html`<div class="space-y-4">${[...days.entries()].map(([k, list]) => html`<section>
           <h3 class="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-500">${dayHeader(list[0].date)}</h3>

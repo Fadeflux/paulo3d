@@ -24,7 +24,8 @@ function maskKey(k) {
 VIEWS.parametres = {
   render(V) {
     const st = settingsOf(V);
-    const backend = Sync.backend;
+    // Boot.backend est connu dès le premier affichage (Sync.backend peut ne pas l'être encore)
+    const backend = Sync.backend || Boot.backend;
     const isDemo = backend && backend.kind === 'demo';
     const cfg = lsGet(LS.supa, null);
     const machines = valuesOf(V.machines).sort((a, b) => (a.archived - b.archived) || (b.is_default - a.is_default) || a.name.localeCompare(b.name, 'fr'));
@@ -123,7 +124,7 @@ VIEWS.parametres = {
             </div>`,
             App.installPrompt ? btn('Installer maintenant', { size: 'sm', variant: 'primary', icon: 'Download', action: 'install-app' }) : '')}
 
-          <p class="px-1 text-center text-[12px] text-slate-600">Paulo3D · version ${APP_VERSION} · schéma ${SCHEMA_VERSION}</p>
+          <p class="px-1 text-center text-[12px] text-slate-500">Paulo3D · version ${APP_VERSION} · schéma ${SCHEMA_VERSION}</p>
         </div>
       </div>`;
   },

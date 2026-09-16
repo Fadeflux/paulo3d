@@ -66,7 +66,7 @@ function stockRow(V, g) {
       <div class="font-display text-2xl font-bold tabular-nums ${g.qty > 0 ? 'text-slate-50' : 'text-slate-600'}">${fmtNum(g.qty)}</div>
       <div class="text-[11px] text-slate-500">en stock</div>
     </div>
-    <div class="flex shrink-0 gap-1">
+    <div class="flex shrink-0 gap-2">
       ${g.qty > 0 ? btn('', { size: 'icon', variant: 'primary', icon: 'ShoppingBag', action: 'stock-sell', attrs: { 'data-key': g.key }, title: 'Vendre' }) : g.template_id ? btn('', { size: 'icon', icon: 'Printer', action: 'tpl-produce', attrs: { 'data-id': g.template_id }, title: 'Produire' }) : ''}
       ${btn('', { size: 'icon', variant: 'ghost', icon: 'EllipsisVertical', action: 'stock-menu', attrs: { 'data-key': g.key }, title: 'Plus d’actions' })}
     </div>
@@ -119,7 +119,7 @@ function salesTab(V) {
       <div class="card px-3 py-3"><div class="text-[11px] text-slate-500">Marge nette</div><div class="font-display text-lg font-bold tabular-nums ${net >= 0 ? 'text-neon' : 'text-rose-300'}">${fmtEur(net)}</div></div>
       <div class="card px-3 py-3"><div class="text-[11px] text-slate-500">Ventes</div><div class="font-display text-lg font-bold tabular-nums text-slate-50">${fmtNum(sales.length)}</div></div>
     </div>
-    ${sales.length ? html`<div class="card divide-y divide-white/[0.05] overflow-hidden">${sales.map((s) => html`<button data-action="sale-open" data-id="${s.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03] sm:px-4">
+    ${sales.length ? html`<div class="card divide-y divide-white/[0.05] overflow-hidden">${sales.map((s) => html`<button data-action="sale-open" data-id="${s.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06] sm:px-4">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl text-cyan-300 bg-cyan-400/10">${icon('ShoppingBag', 'w-5 h-5')}</span>
         <span class="min-w-0 flex-1"><span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${saleTitle(V, s)}</span>
           <span class="block truncate text-[12px] text-slate-500">${fmtDate(s.occurred_at, 'short')} · ${channelOf(st, s.channel).name}${s.customer ? ` · ${s.customer}` : ''}</span></span>
@@ -145,7 +145,7 @@ function productionsTab(V) {
     </div>
     ${prods.length ? html`<div class="card divide-y divide-white/[0.05] overflow-hidden">${prods.map((p) => {
       const meta = p.kind === 'failure' ? EVENT_META.failure : EVENT_META.production;
-      return html`<button data-action="production-open" data-id="${p.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left hover:bg-white/[0.03] sm:px-4">
+      return html`<button data-action="production-open" data-id="${p.id}" class="flex w-full items-center gap-3 px-3 py-3 text-left transition hover:bg-white/[0.03] active:bg-white/[0.06] sm:px-4">
         <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl ${meta.cls}">${icon(meta.icon, 'w-5 h-5')}</span>
         <span class="min-w-0 flex-1"><span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${p.item_name} × ${fmtNum(p.quantity)}</span>
           <span class="block truncate text-[12px] text-slate-500">${fmtDate(p.occurred_at, 'short')} · ${p.kind === 'failure' ? `raté à ${fmtNum(p.failed_pct)} %` : 'production'} · ${fmtG(p.grams_total)}</span></span>
@@ -662,7 +662,7 @@ function openSaleDetails(id) {
             return html`<div class="px-3 py-2.5">
               <div class="flex items-center justify-between gap-2"><span class="text-sm text-slate-100">${i.quantity} × ${i.item_name}</span><span class="font-display text-sm font-semibold tabular-nums text-slate-100">${fmtEur(i.quantity * i.unit_price)}</span></div>
               <div class="text-[12px] text-slate-500">${fmtEur(i.unit_price)} / pièce · coût de revient ${fmtEur(i.cogs)}${i.from_stock ? '' : ' · sur mesure'}</div>
-              ${lots.length ? html`<div class="mt-1 text-[11px] text-slate-600">Pris dans : ${lots.map((a) => {
+              ${lots.length ? html`<div class="mt-1 text-[11px] text-slate-400">Pris dans : ${lots.map((a) => {
                 const lot = V.production_stock.get(a.lot_id);
                 return `${a.quantity} du ${lot ? fmtDate(lot.occurred_at, 'short') : 'lot supprimé'} (${fmtEur(a.unit_cost)})`;
               }).join(', ')}</div>` : ''}

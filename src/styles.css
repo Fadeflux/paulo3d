@@ -8,6 +8,8 @@
   b { @apply font-semibold; }
   /* Sur petit écran, un graphique (canvas 300 px) ne doit pas élargir la page */
   .grid > * { min-width: 0; }
+  /* pas de délai de 300 ms au toucher */
+  button, a, summary, label, select, [data-action] { touch-action: manipulation; }
 }
 
 @layer components {
@@ -46,4 +48,43 @@
   .range { @apply h-2 cursor-pointer; accent-color: #22f2a0; }
   .no-scrollbar { scrollbar-width: none; }
   .no-scrollbar::-webkit-scrollbar { display: none; }
+  /* boutons de pied de fenêtre : passent à la ligne sur très petit écran au lieu de déborder */
+  .modal-footer > div { flex-wrap: wrap; }
+  /* action en cours : le bouton affiche un anneau et ne peut pas être recliqué */
+  .btn { position: relative; }
+  .btn.is-busy { color: transparent !important; pointer-events: none; }
+  .btn.is-busy svg { opacity: 0; }
+  .btn.is-busy::before {
+    content: '';
+    position: absolute;
+    inset: 0;
+    margin: auto;
+    height: 18px;
+    width: 18px;
+    border-radius: 9999px;
+    border: 2px solid rgba(226, 232, 240, 0.28);
+    border-top-color: #e2e8f0;
+    animation: p3dSpin 0.7s linear infinite;
+  }
+  .btn-primary.is-busy::before { border-color: rgba(5, 7, 10, 0.25); border-top-color: #05070a; }
+  .view-enter { animation: p3dViewIn 0.18s ease-out both; }
+}
+
+@keyframes p3dSpin { to { transform: rotate(360deg); } }
+@keyframes p3dViewIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+/* Écran tactile : zone de toucher d'au moins 44 × 44 px autour des petits boutons (apparence inchangée),
+   et champs en 16 px (sinon l'iPhone zoome sur la page à chaque saisie) */
+@media (pointer: coarse) {
+  .btn::after, .chip::after, [role='tab']::after, .hit::after {
+    content: '';
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
+  .chip, [role='tab'], .hit { position: relative; }
+  input, select, textarea { font-size: 16px !important; }
 }

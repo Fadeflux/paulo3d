@@ -29,7 +29,7 @@ function attrList(obj) {
 }
 
 function btn(label, { variant = 'secondary', icon: ic, action, size = 'md', attrs = null, type = 'button', cls = '', title } = {}) {
-  const sizes = { sm: 'h-9 px-3 text-[13px] rounded-lg', md: 'h-11 px-4 text-sm rounded-xl', lg: 'h-12 px-5 text-[15px] rounded-xl', icon: 'h-10 w-10 rounded-xl' };
+  const sizes = { sm: 'h-9 px-3 text-[13px] rounded-lg', md: 'h-11 px-4 text-sm rounded-xl', lg: 'h-12 px-5 text-[15px] rounded-xl', icon: 'h-10 w-10 rounded-xl', iconSm: 'h-9 w-9 rounded-xl' };
   return html`<button type="${type}" class="btn btn-${variant} ${sizes[size]} ${cls}" ${action ? raw(`data-action="${esc(action)}"`) : ''} ${title ? raw(`title="${esc(title)}" aria-label="${esc(title)}"`) : ''} ${attrList(attrs)}>${ic ? icon(ic, size === 'sm' ? 'w-4 h-4' : 'w-[18px] h-[18px]') : ''}${label ? html`<span>${label}</span>` : ''}</button>`;
 }
 
@@ -198,7 +198,7 @@ function toast(message, { tone = 'ok', title = '', timeout = 4200 } = {}) {
   el.className = `toast pointer-events-auto flex w-full max-w-md items-start gap-3 rounded-2xl border ${t.border} bg-ink-850/95 p-3.5 shadow-2xl shadow-black/50 backdrop-blur`;
   el.innerHTML = String(html`<span class="mt-0.5 ${t.text}">${icon(ic, 'w-5 h-5')}</span>
     <div class="min-w-0 flex-1">${title ? html`<div class="text-sm font-semibold text-slate-100">${title}</div>` : ''}<div class="text-[13px] leading-snug text-slate-300">${message}</div></div>
-    <button class="text-slate-500 hover:text-slate-200" aria-label="Fermer">${icon('X', 'w-4 h-4')}</button>`);
+    <button class="hit -m-1 shrink-0 rounded-lg p-1 text-slate-400 hover:text-slate-200" aria-label="Fermer">${icon('X', 'w-4 h-4')}</button>`);
   const close = () => {
     el.classList.add('toast-out');
     setTimeout(() => el.remove(), 220);
@@ -206,6 +206,23 @@ function toast(message, { tone = 'ok', title = '', timeout = 4200 } = {}) {
   el.querySelector('button').addEventListener('click', close);
   root.appendChild(el);
   if (timeout) setTimeout(close, tone === 'bad' ? Math.max(timeout, 8000) : timeout);
+}
+
+// Bouton principal dont l'action prend du temps (envoi à la base) : anneau de chargement après 150 ms,
+// bouton non recliquable jusqu'à la fin (pas d'anneau pour les actions instantanées)
+function withBusy(el, result) {
+  if (!result || typeof result.then !== 'function' || !el || !el.matches || !el.matches('.btn-primary, .btn[data-action="submit"]')) return result;
+  const timer = setTimeout(() => {
+    el.classList.add('is-busy');
+    el.setAttribute('aria-busy', 'true');
+  }, 150);
+  const done = () => {
+    clearTimeout(timer);
+    el.classList.remove('is-busy');
+    el.removeAttribute('aria-busy');
+  };
+  result.then(done, done);
+  return result;
 }
 
 // Annonce honnête du résultat d'une action
@@ -243,7 +260,7 @@ const Modal = {
           <div class="min-w-0"><div class="mx-auto mb-2 h-1 w-10 rounded-full bg-white/15 sm:hidden"></div>
             <h2 class="font-display text-lg font-semibold text-slate-50" data-title></h2>
             <p class="text-[13px] text-slate-400" data-subtitle></p></div>
-          <button class="btn btn-ghost h-9 w-9 rounded-xl" data-close aria-label="Fermer">${icon('X', 'w-5 h-5')}</button>
+          <button class="btn btn-ghost h-9 w-9 shrink-0 rounded-xl" data-close aria-label="Fermer">${icon('X', 'w-5 h-5')}</button>
         </div>
         <div class="modal-body flex-1 overflow-y-auto overscroll-contain px-5 py-4" data-body></div>
         <div class="modal-footer hidden border-t border-white/[0.06] bg-ink-900/95 px-5 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]" data-footer></div>
@@ -302,7 +319,7 @@ const Modal = {
       if (a && m.actions[a.dataset.action]) {
         e.preventDefault();
         e.stopPropagation();
-        m.actions[a.dataset.action](a, e, m);
+        withBusy(a, m.actions[a.dataset.action](a, e, m));
       }
     });
     if (onInput) {
@@ -400,6 +417,7 @@ const App = {
       Sync.subscribe(() => this.updateChrome());
       window.addEventListener('hashchange', () => {
         this.route = parseHash();
+        this.routeChanged = true;
         this.render();
         window.scrollTo({ top: 0 });
       });
@@ -409,7 +427,7 @@ const App = {
         const fn = Actions[a.dataset.action];
         if (fn) {
           e.preventDefault();
-          fn(a, e);
+          withBusy(a, fn(a, e));
         }
       });
       document.addEventListener('input', (e) => {
@@ -447,7 +465,7 @@ const App = {
       <div class="lg:pl-64">
         <header class="sticky top-0 z-20 border-b border-white/[0.06] bg-ink-950/75 backdrop-blur-xl pt-[env(safe-area-inset-top)] lg:border-none lg:bg-transparent lg:backdrop-blur-0">
           <div class="mx-auto flex h-14 max-w-6xl items-center gap-3 px-4 lg:h-16 lg:px-8">
-            <a href="#/" class="lg:hidden">${logoMark(34)}</a>
+            <a href="#/" class="hit shrink-0 lg:hidden" aria-label="Tableau de bord">${logoMark(34)}</a>
             <div class="min-w-0 flex-1 truncate font-display text-[17px] font-semibold text-slate-100 max-[359px]:invisible lg:hidden" id="top-title"></div>
             <div class="hidden flex-1 lg:block"></div>
             <div id="sync-pill"></div>
@@ -475,6 +493,13 @@ const App = {
     const active = document.activeElement;
     const keep = active && main.contains(active) && active.dataset.keep ? { key: active.dataset.keep, start: active.selectionStart, end: active.selectionEnd } : null;
     main.innerHTML = String(view.render(Store.V, this.route));
+    // changement d'écran (pas un simple rafraîchissement des données) : apparition douce
+    if (this.routeChanged) {
+      this.routeChanged = false;
+      main.classList.remove('view-enter');
+      void main.offsetWidth;
+      main.classList.add('view-enter');
+    }
     if (keep) {
       const el = main.querySelector(`[data-keep="${keep.key}"]`);
       if (el) {
@@ -501,14 +526,14 @@ const App = {
     const bottom = $('#bottom-nav');
     if (bottom) {
       bottom.innerHTML = String(html`<div class="grid grid-cols-5">${NAV.map((n) => html`<a href="${n.hash}" class="bottom-link ${n.name === route || (route === 'historique' && n.name === 'dashboard') ? 'bottom-active' : ''}" aria-label="${n.label}">
-        <span class="bottom-ic">${icon(n.icon, 'w-[22px] h-[22px]')}</span><span class="text-[10.5px] font-medium">${n.short}</span></a>`)}</div>`);
+        <span class="bottom-ic">${icon(n.icon, 'w-[22px] h-[22px]')}</span><span class="text-[11px] font-medium">${n.short}</span></a>`)}</div>`);
     }
     const s = Sync.summary();
     const t = TONES[s.tone] || TONES.off;
     const pill = $('#sync-pill');
     if (pill) {
       const spin = Sync.state.flushing || (Sync.state.pulling && !Sync.state.firstPullDone);
-      pill.innerHTML = String(html`<button data-action="sync-panel" class="inline-flex h-9 items-center gap-2 rounded-full border ${t.border} ${t.bg} px-3 text-[12px] font-semibold ${t.text}" title="État de la synchronisation">
+      pill.innerHTML = String(html`<button data-action="sync-panel" class="hit inline-flex h-9 items-center gap-2 rounded-full border ${t.border} ${t.bg} px-3 text-[12px] font-semibold ${t.text}" title="État de la synchronisation">
         ${spin ? icon('LoaderCircle', 'w-4 h-4 animate-spin') : html`<span class="relative flex h-2 w-2"><span class="absolute inline-flex h-full w-full rounded-full ${t.dot} ${s.tone === 'ok' ? 'animate-ping opacity-40' : 'opacity-0'}"></span><span class="relative inline-flex h-2 w-2 rounded-full ${t.dot}"></span></span>`}
         <span class="max-w-[9.5rem] truncate sm:max-w-none">${s.label}</span></button>`);
     }
@@ -517,7 +542,7 @@ const App = {
       foot.innerHTML = String(html`<div class="rounded-2xl border border-white/[0.06] bg-ink-900/70 p-3 text-[12px] text-slate-400">
         <div class="flex items-center justify-between"><span>Dernière synchro</span><span class="text-slate-300">${Sync.state.lastPullAt ? fmtRelative(Sync.state.lastPullAt) : '—'}</span></div>
         <div class="mt-1 flex items-center justify-between"><span>Temps réel</span><span class="${Sync.state.realtime === 'on' ? 'text-neon' : 'text-slate-500'}">${Sync.backend && Sync.backend.kind === 'demo' ? 'démo' : Sync.state.realtime === 'on' ? 'actif' : 'coupé'}</span></div>
-      </div><div class="px-1 text-[11px] text-slate-600">Paulo3D · v${APP_VERSION}</div>`);
+      </div><div class="px-1 text-[11px] text-slate-500">Paulo3D · v${APP_VERSION}</div>`);
     }
     const banner = $('#banner');
     if (banner) banner.innerHTML = String(renderBanner());
@@ -527,7 +552,7 @@ const App = {
 function renderBanner() {
   const items = [];
   if (Sync.backend && Sync.backend.kind === 'demo') {
-    items.push(html`<div class="flex items-center gap-2 bg-violet-500/10 px-4 py-2 text-[12px] text-violet-200 lg:rounded-xl">${icon('FlaskConical', 'w-4 h-4 shrink-0')}<span>Mode démo : les données restent sur cet appareil et ne sont envoyées nulle part.</span><a href="#/parametres" class="ml-auto shrink-0 font-semibold underline">Connecter Supabase</a></div>`);
+    items.push(html`<div class="flex items-center gap-2 bg-violet-500/10 px-4 py-2 text-[12px] text-violet-200 lg:rounded-xl">${icon('FlaskConical', 'w-4 h-4 shrink-0')}<span>Mode démo<span class="hidden sm:inline"> : les données restent sur cet appareil et ne sont envoyées nulle part</span><span class="sm:hidden"> · données sur cet appareil</span></span><a href="#/parametres" class="hit ml-auto shrink-0 font-semibold underline">Connecter Supabase</a></div>`);
   }
   if (Store.volatile) {
     items.push(html`<div class="flex items-center gap-2 bg-amber-400/10 px-4 py-2 text-[12px] text-amber-200">${icon('TriangleAlert', 'w-4 h-4 shrink-0')}<span>Ce navigateur refuse la mémoire locale : sans réseau, les actions ne seront pas gardées si tu fermes l'appli.</span></div>`);
@@ -536,7 +561,7 @@ function renderBanner() {
     items.push(html`<div class="flex items-center gap-2 bg-amber-400/10 px-4 py-2 text-[12px] text-amber-200">${icon('HardDriveDownload', 'w-4 h-4 shrink-0')}<span>La copie hors-ligne de cet appareil n'a pas pu être enregistrée (mémoire pleine ?). Les données en ligne ne sont pas touchées.</span></div>`);
   }
   if (Sync.state.needsLogin) {
-    items.push(html`<div class="flex items-center gap-2 bg-rose-500/10 px-4 py-2 text-[12px] text-rose-200">${icon('KeyRound', 'w-4 h-4 shrink-0')}<span>Ta session a expiré : reconnecte-toi pour envoyer les actions en attente (elles sont gardées).</span><button data-action="relogin" class="ml-auto shrink-0 font-semibold underline">Se reconnecter</button></div>`);
+    items.push(html`<div class="flex items-center gap-2 bg-rose-500/10 px-4 py-2 text-[12px] text-rose-200">${icon('KeyRound', 'w-4 h-4 shrink-0')}<span>Ta session a expiré : reconnecte-toi pour envoyer les actions en attente (elles sont gardées).</span><button data-action="relogin" class="hit ml-auto shrink-0 font-semibold underline">Se reconnecter</button></div>`);
   }
   if (Sync.state.schemaVersion !== null && Sync.state.schemaVersion < SCHEMA_VERSION) {
     items.push(html`<div class="flex items-center gap-2 bg-amber-400/10 px-4 py-2 text-[12px] text-amber-200">${icon('Database', 'w-4 h-4 shrink-0')}<span>La base Supabase n'est pas à jour : relance le script SQL fourni.</span></div>`);

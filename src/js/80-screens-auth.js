@@ -86,7 +86,7 @@ const Screens = {
       <div class="relative mx-auto flex min-h-full w-full max-w-md flex-col justify-center px-5 py-10 pt-[max(2.5rem,env(safe-area-inset-top))]">
         <div class="mb-8 flex justify-center">${logoLockup({ size: 52 })}</div>
         ${content}
-        <p class="mt-8 text-center text-[11px] text-slate-600">Paulo3D · v${APP_VERSION}</p>
+        <p class="mt-8 text-center text-[11px] text-slate-500">Paulo3D · v${APP_VERSION}</p>
       </div>`);
     const splash = document.getElementById('splash');
     if (splash) splash.remove();
@@ -129,7 +129,7 @@ const Screens = {
       <div class="mt-5 text-center">
         ${fromSettings
           ? html`<button class="text-sm font-medium text-slate-400 hover:text-slate-200" id="setup-back">Retour</button>`
-          : html`<div class="mb-3 flex items-center gap-3 text-[12px] text-slate-600"><span class="h-px flex-1 bg-white/10"></span>ou<span class="h-px flex-1 bg-white/10"></span></div>
+          : html`<div class="mb-3 flex items-center gap-3 text-[12px] text-slate-500"><span class="h-px flex-1 bg-white/10"></span>ou<span class="h-px flex-1 bg-white/10"></span></div>
              <button class="btn btn-secondary h-11 w-full rounded-xl" id="setup-demo">${icon('FlaskConical', 'w-[18px] h-[18px]')}<span>Essayer en mode démo</span></button>
              <p class="mt-2 text-[12px] text-slate-500">Données d'exemple, stockées uniquement sur cet appareil.</p>`}
       </div>`);

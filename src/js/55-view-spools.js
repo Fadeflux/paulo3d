@@ -34,7 +34,8 @@ VIEWS.bobines = {
     if (mat !== 'all') list = list.filter((x) => x.s.material === mat);
     if (q) list = list.filter((x) => normalizeText(`${x.s.brand} ${x.s.material} ${x.s.color_name}`).includes(q));
     const rank = { empty: 0, critical: 1, low: 2, ok: 3 };
-    list.sort((a, b) => (view === 'alert' ? rank[a.status] - rank[b.status] : 0) || a.s.material.localeCompare(b.s.material, 'fr') || (a.s.color_name || '').localeCompare(b.s.color_name || '', 'fr') || toNum(a.s.remaining_weight_g) - toNum(b.s.remaining_weight_g));
+    // bobines à racheter en premier (vide, critique, bientôt vide), puis par matière et couleur
+    list.sort((a, b) => (view !== 'archived' ? rank[a.status] - rank[b.status] : 0) || a.s.material.localeCompare(b.s.material, 'fr') || (a.s.color_name || '').localeCompare(b.s.color_name || '', 'fr') || toNum(a.s.remaining_weight_g) - toNum(b.s.remaining_weight_g));
 
     return html`
       ${pageHeader('Bobines', `${fmtNum(active.length)} bobine${active.length > 1 ? 's' : ''} active${active.length > 1 ? 's' : ''}`, btn('Ajouter une bobine', { variant: 'primary', icon: 'Plus', action: 'spool-new' }))}
@@ -51,7 +52,7 @@ VIEWS.bobines = {
             <input class="input pl-9" placeholder="Couleur, marque, matière…" value="${App.ui.spoolQ || ''}" data-page-input="spool-search" data-keep="spool-search" autocomplete="off"/>
           </div>
         </div>
-        ${materials.length > 1 ? html`<div class="no-scrollbar -mx-4 flex gap-2 overflow-x-auto px-4 lg:mx-0 lg:flex-wrap lg:px-0">
+        ${materials.length > 1 ? html`<div class="no-scrollbar -mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 lg:mx-0 lg:flex-wrap lg:px-0">
           <button data-action="spool-mat" data-value="all" class="chip ${mat === 'all' ? 'chip-active' : ''}">Toutes matières</button>
           ${materials.map((m) => html`<button data-action="spool-mat" data-value="${m}" class="chip ${mat === m ? 'chip-active' : ''}">${m}</button>`)}
         </div>` : ''}
@@ -75,7 +76,7 @@ function spoolCard(V, s, status) {
         <div class="flex flex-wrap items-center gap-x-2 gap-y-1"><h3 class="truncate font-semibold text-slate-100">${s.color_name || 'Sans nom'}</h3>${s.archived ? badge('Archivée', 'off') : spoolStatusBadge(status)}</div>
         <div class="truncate text-[13px] text-slate-400">${[s.brand, s.material].filter(Boolean).join(' · ')}</div>
       </div>
-      ${btn('', { variant: 'ghost', size: 'icon', icon: 'EllipsisVertical', action: 'spool-menu', attrs: { 'data-id': s.id }, title: 'Plus d’actions', cls: '-mr-2 -mt-1 h-9 w-9' })}
+      ${btn('', { variant: 'ghost', size: 'iconSm', icon: 'EllipsisVertical', action: 'spool-menu', attrs: { 'data-id': s.id }, title: 'Plus d’actions', cls: '-mr-2 -mt-1 shrink-0' })}
     </div>
     <div class="mt-4">
       <div class="flex items-baseline justify-between gap-2">

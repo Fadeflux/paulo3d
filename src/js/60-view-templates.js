@@ -47,7 +47,7 @@ function templateCard(V, t, st) {
     <div class="flex flex-1 flex-col p-4">
       <div class="flex items-start justify-between gap-2">
         <h3 class="line-clamp-2 font-semibold leading-snug text-slate-100">${t.name}</h3>
-        ${btn('', { variant: 'ghost', size: 'icon', icon: 'EllipsisVertical', action: 'tpl-menu', attrs: { 'data-id': t.id }, title: 'Plus d’actions', cls: '-mr-2 -mt-1 h-9 w-9 shrink-0' })}
+        ${btn('', { variant: 'ghost', size: 'iconSm', icon: 'EllipsisVertical', action: 'tpl-menu', attrs: { 'data-id': t.id }, title: 'Plus d’actions', cls: '-mr-2 -mt-1 shrink-0' })}
       </div>
       <div class="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-[12px] text-slate-400">
         ${colorDots(t.materials)}<span>${fmtG(p.cost.grams)}</span><span class="text-slate-600">·</span><span>${fmtDuration(t.print_time_min)}</span>${toNum(t.labor_min) > 0 ? html`<span class="text-slate-600">·</span><span>${fmtNum(t.labor_min)} min finition</span>` : ''}
