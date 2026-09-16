@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="fr" class="bg-[#05070A]">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Paulo3D — Atelier d'impression 3D</title>
+<meta name="description" content="Paulo3D : bobines, coût de revient, production, stock et ventes de l'atelier d'impression 3D.">
+<meta http-equiv="Content-Security-Policy" content="{{CSP}}">
+<meta name="referrer" content="no-referrer">
+<meta name="theme-color" content="#05070A">
+<meta name="color-scheme" content="dark">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Paulo3D">
+<meta name="format-detection" content="telephone=no">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
+<link rel="icon" href="icons/favicon-32.png" sizes="32x32" type="image/png">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="{{FONT_CSS}}">
+<style>
+  html, body { background: #05070A; color: #E2E8F0; margin: 0; }
+  #splash { position: fixed; inset: 0; z-index: 100; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 18px; background: #05070A; font-family: "Space Grotesk", Inter, system-ui, sans-serif; }
+  #splash .word { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; color: #F1F5F9; }
+  #splash .word span { color: #22F2A0; }
+  .p3d-layer { animation: p3dLayer 1.6s ease-in-out infinite both; }
+  @keyframes p3dLayer { 0%, 100% { opacity: .25 } 50% { opacity: 1 } }
+  body::before { content: ""; position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background: radial-gradient(900px 520px at 8% -12%, rgba(34,242,160,.07), transparent 60%), radial-gradient(760px 420px at 102% -4%, rgba(34,211,238,.055), transparent 60%); }
+  #app { position: relative; z-index: 1; }
+  .toast { animation: toastIn .22s cubic-bezier(.2,.8,.2,1) both; }
+  .toast-out { animation: toastOut .2s ease-in both; }
+  @keyframes toastIn { from { opacity: 0; transform: translateY(10px) scale(.98) } to { opacity: 1; transform: none } }
+  @keyframes toastOut { to { opacity: 0; transform: translateY(8px) } }
+  .modal .modal-panel { animation: sheetIn .28s cubic-bezier(.2,.8,.2,1) both; }
+  .modal .modal-backdrop { animation: fadeIn .2s ease-out both; }
+  .modal-out .modal-panel { animation: sheetOut .18s ease-in both; }
+  .modal-out .modal-backdrop { animation: fadeOut .18s ease-in both; }
+  @media (min-width: 640px) { .modal .modal-panel { animation-name: dialogIn; } .modal-out .modal-panel { animation-name: fadeOut; } }
+  @keyframes sheetIn { from { transform: translateY(48px); opacity: 0 } to { transform: none; opacity: 1 } }
+  @keyframes dialogIn { from { transform: translateY(10px) scale(.98); opacity: 0 } to { transform: none; opacity: 1 } }
+  @keyframes sheetOut { to { transform: translateY(28px); opacity: 0 } }
+  @keyframes fadeIn { from { opacity: 0 } }
+  @keyframes fadeOut { to { opacity: 0 } }
+  .hero-glow { position: absolute; right: -12%; top: -60%; width: 75%; height: 220%; pointer-events: none;
+    background: radial-gradient(closest-side, rgba(34,242,160,.17), transparent 72%); }
+  .auth-bg { position: fixed; inset: 0; pointer-events: none;
+    background: radial-gradient(60% 42% at 50% -4%, rgba(34,242,160,.13), transparent 70%), radial-gradient(40% 30% at 92% 104%, rgba(34,211,238,.09), transparent 70%); }
+  ::-webkit-scrollbar { width: 10px; height: 10px; }
+  ::-webkit-scrollbar-thumb { background: #1C2632; border-radius: 10px; border: 2px solid #05070A; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+</style>
+<script src="https://cdn.tailwindcss.com/3.4.17"></script>
+<script>
+  tailwind.config = {
+    theme: {
+      extend: {
+        colors: {
+          ink: { 950: '#05070A', 900: '#0A0E13', 850: '#0D1218', 800: '#121922', 700: '#19222D', 600: '#243142', 500: '#334358' },
+          neon: { DEFAULT: '#22F2A0', 300: '#86F9CB', 400: '#4DF7B4', 600: '#12C987', 700: '#0B8F5E' },
+        },
+        fontFamily: {
+          sans: ['Inter', 'ui-sans-serif', 'system-ui', '-apple-system', 'Segoe UI', 'Roboto', 'sans-serif'],
+          display: ['"Space Grotesk"', 'Inter', 'ui-sans-serif', 'system-ui', 'sans-serif'],
+        },
+      },
+    },
+  };
+</script>
+<style type="text/tailwindcss">
+{{CSS}}
+</style>
+</head>
+<body>
+<div id="splash" aria-live="polite">{{SPLASH_LOGO}}<div class="word">Paulo<span>3D</span></div></div>
+<div id="app"></div>
+<div id="modal-root"></div>
+<div id="toast-root" class="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:items-end lg:pb-6 lg:pr-6"></div>
+<noscript><p style="padding:24px;font-family:system-ui;color:#E2E8F0">Paulo3D a besoin de JavaScript pour fonctionner.</p></noscript>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js" integrity="{{SRI_SUPABASE}}" crossorigin="anonymous"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="{{SRI_CHART}}" crossorigin="anonymous"></script>
+<script>
+{{JS}}
+</script>
+</body>
+</html>

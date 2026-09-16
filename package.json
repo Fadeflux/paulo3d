@@ -1,0 +1,19 @@
+{
+  "name": "paulo3d",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Paulo3D — gestion d'atelier d'impression 3D (PWA + Supabase)",
+  "type": "module",
+  "scripts": {
+    "build": "node tools/build.mjs",
+    "test": "node tests/run-all.mjs"
+  },
+  "devDependencies": {
+    "embedded-postgres": "^17.10.0-beta.17",
+    "eslint": "^9.39.5",
+    "globals": "^17.12.0",
+    "lucide": "^1.46.0",
+    "pg": "^8.23.0",
+    "sharp": "^0.35.4"
+  }
+}

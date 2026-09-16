@@ -1,0 +1,26 @@
+{
+  "id": "./",
+  "name": "Paulo3D — Atelier d'impression 3D",
+  "short_name": "Paulo3D",
+  "description": "Bobines, coûts de revient, production, stock et ventes de l'atelier d'impression 3D.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./#/",
+  "scope": "./",
+  "display": "standalone",
+  "display_override": ["standalone", "minimal-ui"],
+  "orientation": "any",
+  "background_color": "#05070A",
+  "theme_color": "#05070A",
+  "categories": ["business", "productivity", "finance"],
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ],
+  "shortcuts": [
+    { "name": "Enregistrer une vente", "short_name": "Vente", "url": "./#/stock?action=vente", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Lancer une production", "short_name": "Production", "url": "./#/stock?action=production", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] },
+    { "name": "Bobines", "short_name": "Bobines", "url": "./#/bobines", "icons": [{ "src": "icons/icon-192.png", "sizes": "192x192" }] }
+  ]
+}
