@@ -5,6 +5,17 @@
    ============================================================================= */
 
 const PAGE = 1000;
+const REQUEST_TIMEOUT_MS = 30000;
+
+// Requête bloquée (réseau d'atelier instable, 4G faible) : abandon au bout de 30 s. Elle est alors
+// traitée comme une coupure (l'action reste en attente et repart plus tard) au lieu de bloquer
+// l'envoi de toutes les actions pendant plusieurs minutes.
+function fetchWithTimeout(input, init = {}) {
+  if (init.signal || typeof AbortController === 'undefined') return fetch(input, init);
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  return fetch(input, { ...init, signal: ctrl.signal }).finally(() => clearTimeout(timer));
+}
 
 function wrapError(error, status) {
   const e = new Error(error && error.message ? error.message : 'Erreur inconnue');
@@ -158,7 +169,7 @@ class SupabaseBackend {
     this.sb = supabase.createClient(url, key, {
       auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: `p3d-auth-${this.ref}` },
       realtime: { params: { eventsPerSecond: 20 } },
-      global: { headers: { 'x-client-info': `paulo3d/${APP_VERSION}` } },
+      global: { headers: { 'x-client-info': `paulo3d/${APP_VERSION}` }, fetch: fetchWithTimeout },
     });
   }
 

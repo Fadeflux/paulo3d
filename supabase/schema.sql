@@ -371,16 +371,21 @@ create index if not exists sale_allocations_lot_idx            on public.sale_al
 -- 3. Calculs tenus par la base (déclencheurs)
 -- -----------------------------------------------------------------------------
 
--- Les déclencheurs qui lisent ou modifient une AUTRE table utilisent les droits du propriétaire
--- (security definer) : quand Supabase supprime un compte, les suppressions en cascade sont faites
--- par le rôle interne d'Auth, qui n'a aucun droit sur ces tables. Ils ne touchent que des lignes
--- du même compte (clés étrangères (id, owner_id)).
+-- Droits des déclencheurs :
+--  - ceux qui MODIFIENT une autre table APRÈS une écriture (p3d_movement_touch_spool, p3d_touch_lot,
+--    p3d_remember_delete) utilisent les droits du propriétaire (security definer) : quand Supabase
+--    supprime un compte, les suppressions en cascade sont faites par le rôle interne d'Auth, qui n'a
+--    aucun droit sur ces tables. Ils ne s'exécutent qu'après les contrôles de sécurité et de clés
+--    étrangères, donc uniquement sur des lignes du même compte.
+--  - ceux qui CALCULENT une valeur AVANT l'écriture (p3d_spool_recompute, p3d_lot_recompute) gardent
+--    les droits de l'utilisateur : ils s'exécutent avant le contrôle de sécurité, et avec les droits du
+--    propriétaire un autre compte pourrait deviner, par essais, les chiffres d'un compte qui n'est pas le sien.
 
 -- Poids restant = dernière pesée (ou poids initial) + consommations postérieures
 create or replace function public.p3d_spool_recompute()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 declare
@@ -428,7 +433,7 @@ $$;
 create or replace function public.p3d_lot_recompute()
 returns trigger
 language plpgsql
-security definer
+security invoker
 set search_path = ''
 as $$
 begin

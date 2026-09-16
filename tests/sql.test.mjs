@@ -330,6 +330,17 @@ test('sécurité : un autre compte ne voit ni ne modifie rien', async () => {
   assert.equal(num(still.price), 20);
 });
 
+test('sécurité : un autre compte ne peut pas deviner les chiffres d’un compte par essais d’écriture', async () => {
+  // essais « à l'aveugle » avec les identifiants d'un autre compte : la réponse ne doit jamais dépendre de ses données
+  const probe = (sql, params) => asUser(admin, B, (c) => c.query(sql, params)).then(() => null, (e) => e.code);
+  const lotSmall = await probe("insert into public.production_stock (id, item_name, quantity) values ($1, 'essai', 1)", [ids.lot1]);
+  const lotBig = await probe("insert into public.production_stock (id, item_name, quantity) values ($1, 'essai', 100000)", [ids.lot1]);
+  assert.equal(lotSmall, lotBig, 'même réponse quelle que soit la quantité essayée (sinon ventes/retraits devinables)');
+  const spoolSmall = await probe("insert into public.spools (id, brand, material, price, initial_weight_g) values ($1, 'essai', 'PLA', 0, -99999999)", [ids.s1]);
+  const spoolBig = await probe("insert into public.spools (id, brand, material, price, initial_weight_g) values ($1, 'essai', 'PLA', 0, -99990000)", [ids.s1]);
+  assert.equal(spoolSmall, spoolBig, 'même réponse quel que soit le poids essayé (sinon consommation devinable)');
+});
+
 test('sécurité : sans connexion (anon) tout est refusé', async () => {
   for (const q of ['select * from public.spools', 'select * from public.sales', "select public.p3d_weigh_spool('{}'::jsonb)", "select public.p3d_record_sale('{}'::jsonb)"]) {
     const code = await pgCode(asUser(admin, null, (c) => c.query(q), { role: 'anon' }));

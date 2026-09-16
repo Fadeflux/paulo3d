@@ -789,6 +789,7 @@ const Store = {
   // La base dit que la ligne n'existe plus (P3D10) : elle disparaît de l'écran tout de suite
   // (sinon elle resterait affichée jusqu'au prochain rapprochement complet)
   forgetMissing(op) {
+    if (!/\.(save|patch)$/.test(String(op.type))) return;
     const table = { spool: 'spools', template: 'templates', machine: 'machines' }[String(op.type).split('.')[0]];
     if (table && op.payload && op.payload.id) this.deleteIds(table, [op.payload.id]);
   },
