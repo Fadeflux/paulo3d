@@ -20,7 +20,7 @@ Application web installable sur PC et téléphone : bobines de filament, coût d
    Vérification : `select public.p3d_version();` doit répondre `1`.
 3. Bouton **Connect** en haut du projet (ou **Project Settings → API Keys**) : note l'**URL du projet** (`https://xxxx.supabase.co`) et la clé **publishable** (ou **anon**).
    ⚠️ Ne copie jamais la clé **secret** / **service_role** : l'application la refuse.
-4. **Authentication → URL Configuration** : mets l'adresse du site (ex. `https://paulo-3d.github.io/`) dans **Site URL** et dans **Redirect URLs**. Sans ça, les liens reçus par email (confirmation du compte, mot de passe oublié) ne ramènent pas vers l'application.
+4. **Authentication → URL Configuration** : mets l'adresse du site (`https://fadeflux.github.io/paulo3d/`) dans **Site URL** et dans **Redirect URLs**. Sans ça, les liens reçus par email (confirmation du compte, mot de passe oublié) ne ramènent pas vers l'application.
 5. Crée le compte de l'atelier : soit depuis l'application (« Créer le compte », puis clique sur le lien reçu par email), soit dans **Authentication → Users → Add user** (coche « Auto Confirm User »).
 6. Une fois le compte créé, ferme les inscriptions : **Authentication → Sign In / Providers → Allow new users to sign up** = désactivé.
 
@@ -28,10 +28,12 @@ Application web installable sur PC et téléphone : bobines de filament, coût d
 
 ## 2. Mettre le site en ligne (GitHub Pages)
 
-1. Crée une **organisation GitHub gratuite** (ex. `paulo-3d`) : l'adresse du site sera `https://paulo-3d.github.io/`.
-2. Dans cette organisation, crée le dépôt `paulo-3d.github.io` et envoie-y ce dossier.
-3. Dépôt → **Settings → Pages** → *Deploy from a branch* → branche `main`, dossier **`/docs`**.
-4. Le site est en ligne au bout d'une minute environ.
+1. Le dépôt GitHub `paulo3d` contient ce dossier.
+2. Dépôt → **Settings → Pages** → *Deploy from a branch* → branche `main`, dossier **`/docs`**.
+3. Le site est en ligne au bout d'une minute environ : **https://fadeflux.github.io/paulo3d/**.
+4. Une mise à jour = reconstruire `docs/` (`npm run build`) puis envoyer sur GitHub : l'appli propose « Nouvelle version disponible ».
+
+> D'autres sites sont publiés à la même adresse de base (`fadeflux.github.io`). Paulo3D range tout ce qu'il garde dans le navigateur sous ses propres noms (`p3d_…`, `paulo3d:…`) et reconstitue tout seul sa copie hors-ligne si un autre site vide les caches du navigateur.
 
 ## 3. Première utilisation
 

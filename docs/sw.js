@@ -1,6 +1,6 @@
 /* Paulo3D — service worker : l'application s'ouvre même sans réseau.
    Les données ne passent JAMAIS par ici : elles sont gérées par l'appli (IndexedDB + Supabase). */
-const VERSION = "1.0.0-62eba859";
+const VERSION = "1.0.0-07be9250";
 const SHELL_CACHE = `p3d-shell-${VERSION}`;
 const CDN_CACHE = 'p3d-cdn-v2';
 const SHELL_FILES = [
@@ -29,8 +29,10 @@ async function fromOldCaches(url) {
   return null;
 }
 
-self.addEventListener('install', (event) => {
-  event.waitUntil((async () => {
+// Remplit les caches hors-ligne. Appelée à l'installation, et de nouveau si un AUTRE site hébergé à la
+// même adresse (ex. un autre site GitHub Pages du même compte) a vidé tous les caches du navigateur.
+async function fillCaches() {
+  {
     const shell = await caches.open(SHELL_CACHE);
     await shell.addAll(SHELL_FILES.map((u) => new Request(u, { cache: 'reload' })));
     const cdn = await caches.open(CDN_CACHE);
@@ -62,7 +64,11 @@ self.addEventListener('install', (event) => {
         }));
       }
     } catch (e) { /* polices système en secours */ }
-  })());
+  }
+}
+
+self.addEventListener('install', (event) => {
+  event.waitUntil(fillCaches());
 });
 
 self.addEventListener('activate', (event) => {
@@ -78,6 +84,10 @@ self.addEventListener('activate', (event) => {
 
 self.addEventListener('message', (event) => {
   if (event.data && event.data.type === 'SKIP_WAITING') self.skipWaiting();
+  // la page a constaté que ses caches ont disparu : reconstitution (seulement pour SA version)
+  if (event.data && event.data.type === 'RECACHE' && event.data.version === VERSION) {
+    event.waitUntil(fillCaches().catch(() => {}));
+  }
 });
 
 self.addEventListener('fetch', (event) => {

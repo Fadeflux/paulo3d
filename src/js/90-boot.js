@@ -247,10 +247,27 @@ const Boot = {
           });
         });
         setInterval(() => reg.update().catch(() => {}), 60 * 60000);
+        this.checkOfflineCache();
+        document.addEventListener('visibilitychange', () => {
+          if (document.visibilityState === 'visible') this.checkOfflineCache();
+        });
       }).catch((e) => console.warn('[paulo3d] service worker non installé', e));
     };
     if (document.readyState === 'complete') register();
     else window.addEventListener('load', register);
+  },
+
+  // Un autre site à la même adresse peut vider tous les caches du navigateur (son service worker
+  // supprime ce qui n'est pas à lui) : sans réparation, Paulo3D ne s'ouvrirait plus sans réseau.
+  // Dès qu'elle est ouverte avec du réseau, la copie hors-ligne est reconstituée.
+  async checkOfflineCache() {
+    try {
+      if (navigator.onLine === false || !globalThis.caches) return;
+      const reg = await navigator.serviceWorker.ready;
+      if (!reg.active || reg.waiting) return;
+      if (await caches.has(`p3d-shell-${APP_VERSION}`)) return;
+      reg.active.postMessage({ type: 'RECACHE', version: APP_VERSION });
+    } catch { /* vérification facultative */ }
   },
 
   offerUpdate(worker) {

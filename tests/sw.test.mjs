@@ -83,6 +83,22 @@ test('mise à jour pendant une panne du CDN : les bibliothèques restent disponi
   assert.equal(rt.store.has('p3d-shell-ancienne'), false, 'ancienne page retirée');
 });
 
+test('un autre site de la même adresse vide tous les caches : Paulo3D les reconstitue à la réouverture', async () => {
+  const VERSION = (SW.match(/const VERSION = "([^"]+)"/) || [])[1];
+  assert.ok(VERSION, 'version lue dans sw.js');
+  const rt = makeRuntime({ cdnUp: true });
+  await rt.fire('install');
+  await rt.fire('activate');
+  rt.store.clear(); // ex. le service worker d'un autre site qui supprime tout ce qui n'est pas à lui
+  await rt.fire('message', { data: { type: 'RECACHE', version: 'autre-version' } });
+  assert.equal(rt.store.size, 0, 'une page d’une autre version ne déclenche rien');
+  await rt.fire('message', { data: { type: 'RECACHE', version: VERSION } });
+  const shell = [...rt.store.keys()].find((k) => k.startsWith('p3d-shell-'));
+  const cdn = [...rt.store.keys()].find((k) => k.startsWith('p3d-cdn-'));
+  assert.ok(shell && rt.store.get(shell).has(`${ORIGIN}/index.html`), 'page de l’appli de nouveau en cache');
+  for (const url of CDN) assert.ok(rt.store.get(cdn).has(url), `${url} de nouveau en cache`);
+});
+
 test('mise à jour avec le CDN disponible : nouveau cache complet, ancien supprimé', async () => {
   const rt = makeRuntime({ cdnUp: true });
   oldInstall(rt);
