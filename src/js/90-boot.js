@@ -14,6 +14,11 @@ const Boot = {
     // Jamais utilisable à l'intérieur d'un autre site (piège à clics) : GitHub Pages ne permet pas
     // d'interdire les cadres par en-tête, l'appli refuse donc elle-même de démarrer dans un cadre.
     if (this.framed()) return Screens.framed();
+    // Lien de configuration collé dans un onglet où l'appli est déjà ouverte : un simple changement après
+    // « # » ne recharge pas la page, on recharge donc pour le traiter comme à l'ouverture (confirmation).
+    window.addEventListener('hashchange', () => {
+      if (/[#&/]setup=/.test(location.hash)) location.reload();
+    });
     this.captureInstallPrompt();
     this.registerServiceWorker();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});

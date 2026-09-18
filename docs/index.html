@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Paulo3D — Atelier d'impression 3D</title>
 <meta name="description" content="Paulo3D : bobines, coût de revient, production, stock et ventes de l'atelier d'impression 3D.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-wR77QDMJ16sHaxTA8t8c/oP2/atmkpQwA9p4o+aQ9W4=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-c+TBNAmxoqm01kuP4yLlkgUhGqXKFiN5RsP6w8JvAAQ=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#05070A">
@@ -80,7 +80,7 @@
    Paulo3D — socle : constantes, formats, HTML sûr, icônes, logo
    ============================================================================= */
 
-const APP_VERSION = "1.0.0-d3a74980";
+const APP_VERSION = "1.0.0-83d38cda";
 const SCHEMA_VERSION = 1;
 
 const LS = {
@@ -6856,6 +6856,11 @@ const Boot = {
     // Jamais utilisable à l'intérieur d'un autre site (piège à clics) : GitHub Pages ne permet pas
     // d'interdire les cadres par en-tête, l'appli refuse donc elle-même de démarrer dans un cadre.
     if (this.framed()) return Screens.framed();
+    // Lien de configuration collé dans un onglet où l'appli est déjà ouverte : un simple changement après
+    // « # » ne recharge pas la page, on recharge donc pour le traiter comme à l'ouverture (confirmation).
+    window.addEventListener('hashchange', () => {
+      if (/[#&/]setup=/.test(location.hash)) location.reload();
+    });
     this.captureInstallPrompt();
     this.registerServiceWorker();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
