@@ -1113,7 +1113,8 @@ revoke execute on function
   public.p3d_is_deleted(text, uuid),
   public.p3d_spool_recompute(), public.p3d_movement_touch_spool(), public.p3d_lot_recompute(),
   public.p3d_touch_lot(), public.p3d_machine_single_default(), public.p3d_touch_updated_at(),
-  public.p3d_remember_delete(), public.p3d_block_resurrection(), public.p3d_resurrection_check()
+  public.p3d_remember_delete(), public.p3d_block_resurrection(), public.p3d_resurrection_check(),
+  public.p3d_version(), public.p3d_materials_valid(jsonb)
 from public, anon;
 
 grant execute on function
@@ -1123,6 +1124,27 @@ grant execute on function
   public.p3d_production_bundle(uuid), public.p3d_sale_bundle(uuid), public.p3d_require_user(),
   public.p3d_is_deleted(text, uuid), public.p3d_version(), public.p3d_materials_valid(jsonb)
 to authenticated;
+
+-- Fonctions des déclencheurs : personne ne peut les appeler directement, même connecté (Supabase donne
+-- ce droit par défaut à tout nouvel objet). Les déclencheurs, eux, n'ont pas besoin de ce droit.
+revoke execute on function
+  public.p3d_spool_recompute(), public.p3d_movement_touch_spool(), public.p3d_lot_recompute(),
+  public.p3d_touch_lot(), public.p3d_machine_single_default(), public.p3d_touch_updated_at(),
+  public.p3d_remember_delete(), public.p3d_block_resurrection(), public.p3d_resurrection_check()
+from authenticated;
+
+-- Fonction ajoutée par Supabase à la création du projet (option « RLS automatique ») : c'est une
+-- fonction de déclencheur d'évènement, qui marche sans ce droit. On retire seulement la possibilité
+-- de l'appeler par l'API (avertissement du Security Advisor). Absente = rien à faire.
+do $$
+begin
+  if exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+             where n.nspname = 'public' and p.proname = 'rls_auto_enable' and p.pronargs = 0
+               and p.prorettype = 'event_trigger'::regtype) then
+    revoke execute on function public.rls_auto_enable() from public, anon, authenticated;
+  end if;
+end
+$$;
 
 
 -- -----------------------------------------------------------------------------

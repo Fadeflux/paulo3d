@@ -546,3 +546,40 @@ test('connecté mais sans identité : action refusée proprement', async () => {
   const code = await pgCode(asUser(admin, null, (c) => rpc(c, 'p3d_record_sale', {})));
   assert.equal(code, 'P3D00');
 });
+
+test('Security Advisor : aucune fonction « security definer » appelable par l’API, rien d’ouvert sans compte', async () => {
+  // les droits que Supabase donne par défaut à tout nouvel objet (imités dans supabase-stubs.sql) sont refermés
+  const defs = (await admin.query(`
+    select p.oid::regprocedure::text as fn,
+           has_function_privilege('anon', p.oid, 'execute') as anon,
+           has_function_privilege('authenticated', p.oid, 'execute') as auth
+    from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and p.prosecdef`)).rows;
+  assert.ok(defs.length >= 4, 'fonctions security definer trouvées (dont rls_auto_enable ajoutée par Supabase)');
+  for (const r of defs) {
+    assert.equal(r.anon, false, `${r.fn} appelable sans compte`);
+    assert.equal(r.auth, false, `${r.fn} appelable directement par un compte connecté`);
+  }
+  const anonFns = (await admin.query(`
+    select p.oid::regprocedure::text as fn from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+    where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')`)).rows;
+  assert.deepEqual(anonFns.map((r) => r.fn), [], 'aucune fonction appelable sans compte');
+  const anonTables = (await admin.query(`
+    select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
+    where n.nspname = 'public' and c.relkind in ('r', 'v', 'm')
+      and (has_table_privilege('anon', c.oid, 'select') or has_table_privilege('anon', c.oid, 'insert')
+           or has_table_privilege('anon', c.oid, 'update') or has_table_privilege('anon', c.oid, 'delete'))`)).rows;
+  assert.deepEqual(anonTables.map((r) => r.relname), [], 'aucune table accessible sans compte');
+  // les automatismes marchent toujours sans ce droit : celui de Supabase (RLS sur toute nouvelle table)…
+  await admin.query('create table public.p3d_essai_rls (id int)');
+  const rls = await one(admin, "select relrowsecurity as rls from pg_class where relname = 'p3d_essai_rls'");
+  await admin.query('drop table public.p3d_essai_rls');
+  assert.equal(rls.rls, true);
+  // … et ceux de Paulo3D (suppression mémorisée par un déclencheur security definer)
+  const gone = await asUser(admin, A, async (c) => {
+    const m = await one(c, "insert into public.machines (name) values ('Essai droits') returning id");
+    await c.query('delete from public.machines where id = $1', [m.id]);
+    return one(c, "select count(*)::int as n from public.deleted_rows where table_name = 'machines' and row_id = $1", [m.id]);
+  });
+  assert.equal(gone.n, 1);
+});

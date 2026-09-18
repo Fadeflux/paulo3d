@@ -41,4 +41,31 @@ grant usage on schema auth to anon, authenticated, service_role;
 grant execute on all functions in schema auth to anon, authenticated, service_role;
 grant usage on schema public to anon, authenticated, service_role;
 
+-- Comme Supabase : tout NOUVEL objet du schéma public est ouvert aux rôles de l'API.
+-- Le script doit donc retirer lui-même chaque droit qu'il ne veut pas donner.
+alter default privileges in schema public grant all on tables to anon, authenticated, service_role;
+alter default privileges in schema public grant all on functions to anon, authenticated, service_role;
+alter default privileges in schema public grant all on sequences to anon, authenticated, service_role;
+
+-- Comme un projet Supabase créé avec « RLS automatique » : fonction de déclencheur d'évènement
+-- (security definer) dans public, appelable par tous tant que le script ne l'a pas fermée.
+create or replace function public.rls_auto_enable()
+returns event_trigger
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+declare
+  r record;
+begin
+  for r in select * from pg_event_trigger_ddl_commands() where command_tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO') loop
+    execute format('alter table if exists %s enable row level security', r.object_identity);
+  end loop;
+end
+$$;
+do $$ begin
+  create event trigger ensure_rls on ddl_command_end when tag in ('CREATE TABLE', 'CREATE TABLE AS', 'SELECT INTO')
+    execute function public.rls_auto_enable();
+exception when duplicate_object then null; end $$;
+
 do $$ begin create publication supabase_realtime; exception when duplicate_object then null; end $$;
