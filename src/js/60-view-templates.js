@@ -5,13 +5,15 @@
 VIEWS.templates = {
   render(V) {
     const st = settingsOf(V);
-    const showArchived = App.ui.tplArchived === 'yes';
     const q = normalizeText(App.ui.tplQ || '');
     const all = valuesOf(V.templates);
+    const archivedCount = all.filter((t) => t.archived).length;
+    // plus aucun archivé (le dernier vient d'être réactivé ou supprimé) : retour au catalogue, sinon la
+    // liste resterait vide sans bouton pour revenir (le choix « Archivés » est masqué quand il n'y en a pas)
+    const showArchived = App.ui.tplArchived === 'yes' && archivedCount > 0;
     let list = all.filter((t) => !!t.archived === showArchived);
     if (q) list = list.filter((t) => normalizeText(`${t.name} ${t.description || ''}`).includes(q));
     list.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
-    const archivedCount = all.filter((t) => t.archived).length;
     return html`
       ${pageHeader('Templates', `${fmtNum(all.length - archivedCount)} modèle${all.length - archivedCount > 1 ? 's' : ''} au catalogue`, btn('Nouveau template', { variant: 'primary', icon: 'Plus', action: 'tpl-new' }))}
       <div class="mb-4 flex flex-wrap items-center gap-2">

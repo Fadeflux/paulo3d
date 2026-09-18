@@ -384,7 +384,7 @@ function openSpoolHistory(spool) {
           const meta = mv.kind === 'weigh' ? EVENT_META.weigh : mv.kind === 'failure' ? EVENT_META.failure : EVENT_META.production;
           return html`<div class="flex items-center gap-3 px-3 py-2.5">
             <span class="grid h-9 w-9 shrink-0 place-items-center rounded-xl ${meta.cls}">${icon(meta.icon, 'w-4 h-4')}</span>
-            <span class="min-w-0 flex-1"><span class="block truncate text-sm text-slate-100">${mv.kind === 'weigh' ? 'Pesée' : p ? `${p.item_name} × ${p.quantity}` : 'Production'}</span><span class="block text-[12px] text-slate-500">${fmtDate(mv.occurred_at, 'long')}</span></span>
+            <span class="min-w-0 flex-1"><span class="block truncate text-sm text-slate-100">${mv.kind === 'weigh' ? 'Pesée' : `${mv.kind === 'failure' ? 'Print raté' : 'Production'}${p ? ` · ${p.item_name} × ${p.quantity}` : ''}`}</span><span class="block text-[12px] text-slate-500">${fmtDate(mv.occurred_at, 'long')}</span></span>
             <span class="font-display text-sm font-semibold tabular-nums ${mv.kind === 'weigh' ? 'text-slate-300' : 'text-slate-200'}">${mv.kind === 'weigh' ? `= ${fmtG(mv.measured_g)}` : fmtG(mv.delta_g)}</span>
           </div>`;
         })}</div>` : html`<p class="text-[13px] text-slate-500">Aucune consommation ni pesée pour cette bobine.</p>`}

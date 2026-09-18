@@ -577,6 +577,26 @@ test('connexion : messages de Supabase traduits, aucune inscription possible dep
   assert.ok(!/\.signUp\s*\(/.test(code), 'aucun appel de création de compte dans l’appli');
 });
 
+test('filtres mémorisés : jamais de liste vide sans bouton pour en sortir', () => {
+  const F = app.uuid.constructor; // constructeur Function du bac à sable
+  const App = new F('return App')();
+  const VIEWS = new F('return VIEWS')();
+  const f = fixture();
+  const V = view(applyOps(app, f.ops));
+  const saved = App.ui;
+  try {
+    // « Archivés » mémorisé, mais le dernier template archivé vient d'être réactivé : retour au catalogue
+    App.ui = { tplArchived: 'yes' };
+    assert.ok(String(VIEWS.templates.render(V)).includes('Support Manette Universel'), 'le catalogue reste visible');
+    // matière mémorisée qui n'existe plus (ses bobines ont été supprimées) : filtre ignoré
+    App.ui = { spoolMat: 'PETG' };
+    const out = String(VIEWS.bobines.render(V));
+    assert.ok(out.includes('Noir') && out.includes('Blanc'), 'toutes les bobines restent visibles');
+  } finally {
+    App.ui = saved;
+  }
+});
+
 test('boutons à choix (puces, couleurs) : le choix actif est annoncé aux lecteurs d’écran', () => {
   const code = fs.readFileSync(path.join(ROOT, '.dev', 'app.js'), 'utf8');
   const chips = [...code.matchAll(/<button[^>]*class="chip \$\{[^>]*>/g)].map((m) => m[0]);
