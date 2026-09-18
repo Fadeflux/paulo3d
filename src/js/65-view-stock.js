@@ -4,6 +4,7 @@
    ============================================================================= */
 
 const STOCK_TABS = [
+  { value: 'orders', label: 'Commandes' },
   { value: 'pieces', label: 'Pièces prêtes' },
   { value: 'ventes', label: 'Ventes' },
   { value: 'productions', label: 'Productions' },
@@ -14,9 +15,9 @@ VIEWS.stock = {
     const tab = App.ui.stockTab || 'pieces';
     const actions = html`${btn('Production', { variant: 'primary', icon: 'Printer', action: 'st-production' })}${btn('Vente', { icon: 'ShoppingBag', action: 'st-sale' })}${btn('Print raté', { variant: 'ghost', icon: 'Flame', action: 'st-failure' })}`;
     return html`
-      ${pageHeader('Stock & Ventes', 'Pièces prêtes à la vente, ventes et productions', actions)}
+      ${pageHeader('Stock & Ventes', 'Commandes, pièces prêtes, ventes et productions', actions)}
       <div class="no-scrollbar mb-4 flex overflow-x-auto overflow-y-hidden">${segmented('stockTab', STOCK_TABS, tab)}</div>
-      ${tab === 'ventes' ? salesTab(V) : tab === 'productions' ? productionsTab(V) : piecesTab(V)}`;
+      ${tab === 'orders' ? ordersTab(V) : tab === 'ventes' ? salesTab(V) : tab === 'productions' ? productionsTab(V) : piecesTab(V)}`;
   },
   mount(V, route) {
     const a = route.params.action;
@@ -161,7 +162,8 @@ Actions['sale-open'] = (el) => openSaleDetails(el.dataset.id);
 Actions['production-open'] = (el) => openProductionDetails(el.dataset.id);
 
 /* ---------- lancer une production / déclarer un print raté ---------- */
-function openProductionModal({ kind = 'production', templateId = null }) {
+// quantity : nombre de pièces prérempli (commande) ; onDone : appelé une fois la production acceptée
+function openProductionModal({ kind = 'production', templateId = null, quantity = null, onDone = null }) {
   const V0 = Store.V;
   const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
   if (!templates.length) {
@@ -177,7 +179,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
   const d = {
     kind,
     templateId: first.id,
-    quantity: kind === 'failure' ? 1 : Math.max(1, toNum(first.pieces_per_print, 1)),
+    quantity: kind === 'failure' ? 1 : isPieceCount(quantity) ? toNum(quantity) : Math.max(1, toNum(first.pieces_per_print, 1)),
     failedPct: 100,
     reason: FAILURE_REASONS[0],
     machineId: first.machine_id || '',
@@ -384,14 +386,18 @@ function openProductionModal({ kind = 'production', templateId = null }) {
         });
         d.busy = false;
         el.disabled = false;
-        if (opAccepted(res)) m.close();
+        if (opAccepted(res)) {
+          m.close();
+          if (onDone) onDone();
+        }
       },
     },
   });
 }
 
 /* ---------- enregistrer une vente ---------- */
-function openSaleModal({ templateId = null, itemName = null }) {
+// order : vente d'une commande (préremplie ; la commande passe « livrée » avec le lien vers la vente)
+function openSaleModal({ templateId = null, itemName = null, order = null }) {
   const V0 = Store.V;
   const st0 = settingsOf(V0);
   const priceFor = (V, tid) => {
@@ -403,11 +409,20 @@ function openSaleModal({ templateId = null, itemName = null }) {
   const firstItem = initialGroup || tpl
     ? { key: uuid(), from_stock: true, template_id: templateId || null, item_name: initialGroup ? initialGroup.item_name : tpl.name, quantity: 1, unit_price: priceFor(V0, templateId), unit_cost: null }
     : { key: uuid(), from_stock: true, template_id: null, item_name: '', quantity: 1, unit_price: null, unit_cost: null };
+  if (order) {
+    firstItem.quantity = order.quantity;
+    if (order.unit_price !== null && order.unit_price !== undefined) firstItem.unit_price = toNum(order.unit_price);
+    if (!order.template_id && !initialGroup) {
+      // pièce sur mesure, pas en stock : vendue « sur mesure » (coût de revient à saisir)
+      firstItem.from_stock = false;
+      firstItem.item_name = order.item_name;
+    }
+  }
   const d = {
     id: uuid(),
     items: [firstItem],
-    channel: lsGet('p3d_last_channel', 'direct'),
-    customer: '',
+    channel: (order && order.channel) || lsGet('p3d_last_channel', 'direct'),
+    customer: order ? order.customer || '' : '',
     note: '',
     shipping_charged: null,
     shipping_cost: null,
@@ -619,7 +634,8 @@ function openSaleModal({ templateId = null, itemName = null }) {
         d.busy = true;
         el.disabled = true;
         lsSet('p3d_last_channel', d.channel);
-        const res = await Sync.enqueue('sale.record', p.payload);
+        // vente d'une commande : la même action livre la commande (la base fait les deux ensemble)
+        const res = await Sync.enqueue('sale.record', order ? { ...p.payload, order_id: order.id } : p.payload);
         d.busy = false;
         el.disabled = false;
         if (res.state === 'confirmed') {
@@ -685,7 +701,8 @@ function openSaleDetails(id) {
     actions: {
       close: (el, e, m) => m.close(),
       delete: async (el, e, m) => {
-        const ok = await confirmBox({ title: 'Supprimer cette vente ?', message: 'Les pièces reviennent dans le stock et la vente disparaît des statistiques.', confirm: 'Supprimer la vente' });
+        const linked = valuesOf(Store.V.orders).find((o) => o.sale_id === id);
+        const ok = await confirmBox({ title: 'Supprimer cette vente ?', message: linked ? `Les pièces reviennent dans le stock et la vente disparaît des statistiques. La commande « ${linked.item_name} » redevient « prête ».` : 'Les pièces reviennent dans le stock et la vente disparaît des statistiques.', confirm: 'Supprimer la vente' });
         if (!ok) return;
         const res = await runOp('sale.delete', { id }, { success: 'Vente supprimée, pièces remises en stock' });
         if (opAccepted(res)) m.close();

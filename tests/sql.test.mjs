@@ -39,12 +39,12 @@ test('le script s’exécute, puis se relance sans erreur ni perte', async () =>
   assert.equal(r.n, 1);
   await asUser(admin, A, (c) => c.query("delete from public.spools where brand = 'Témoin'"));
   const v = await asUser(admin, A, (c) => one(c, 'select public.p3d_version() as v'));
-  assert.equal(v.v, 2);
+  assert.equal(v.v, 3);
 });
 
-test('publication temps réel : les 11 tables', async () => {
+test('publication temps réel : les 12 tables', async () => {
   const r = await one(admin, "select count(*)::int as n from pg_publication_tables where pubname = 'supabase_realtime' and schemaname = 'public'");
-  assert.equal(r.n, 11);
+  assert.equal(r.n, 12);
 });
 
 test('réglages : ligne par défaut pour le compte', async () => {
@@ -650,4 +650,66 @@ test('double authentification : code exigé pour un compte qui l’a activée (e
   assert.equal(await asUser(admin, A, (c) => c.query('select * from public.spools'), { aal: 'aal1' }).then(() => null, (e) => e), null, 'compte sans code : rien ne change');
   const priv = await one(admin, "select has_schema_privilege('anon', 'p3d_private', 'usage') as anon_usage, has_function_privilege('anon', 'p3d_private.mfa_ok()', 'execute') as anon_exec");
   assert.deepEqual(priv, { anon_usage: false, anon_exec: false }, 'contrôle hors de portée de l’API');
+});
+
+test('commandes : chacun les siennes, états contrôlés, suppression définitive, liens remis à zéro', async () => {
+  const O = randomUUID();
+  await asUser(admin, A, async (c) => {
+    const t = (await one(c, "insert into public.templates (name) values ('Support commande') returning id")).id;
+    await c.query("insert into public.orders (id, customer, template_id, item_name, quantity, unit_price, due_date) values ($1, 'Marie', $2, 'Support', 2, 13.9, '2026-09-30')", [O, t]);
+  });
+  const vueB = await asUser(admin, B, (c) => one(c, 'select count(*)::int as n from public.orders where id = $1', [O]));
+  assert.equal(vueB.n, 0, 'un autre compte ne voit pas la commande');
+  assert.equal(await pgCode(asUser(admin, null, (c) => c.query('select * from public.orders'), { role: 'anon' })), '42501', 'sans compte : refus');
+  assert.equal(await pgCode(asUser(admin, A, (c) => c.query("update public.orders set status = 'perdue' where id = $1", [O]))), '23514', 'état inconnu refusé');
+  assert.equal(await pgCode(asUser(admin, A, (c) => c.query('update public.orders set quantity = 0 where id = $1', [O]))), '23514', 'quantité nulle refusée');
+  // supprimée : un enregistrement rejoué plus tard ne la fait pas revenir
+  await asUser(admin, A, (c) => c.query('delete from public.orders where id = $1', [O]));
+  const tomb = await one(admin, "select count(*)::int as n from public.deleted_rows where table_name = 'orders' and row_id = $1", [O]);
+  assert.equal(tomb.n, 1, 'suppression mémorisée');
+  const rejoue = await asUser(admin, A, (c) => c.query("insert into public.orders (id, item_name) values ($1, 'Support')", [O]));
+  assert.equal(rejoue.rowCount, 0, 'la commande supprimée ne revient pas');
+  // template supprimé → commande gardée, sans template ; vente annulée → commande redevenue « prête », sans vente
+  await asUser(admin, A, async (c) => {
+    const t = (await one(c, "insert into public.templates (name) values ('Éphémère') returning id")).id;
+    const sale = randomUUID();
+    await rpc(c, 'p3d_record_sale', { id: sale, channel: 'direct', occurred_at: '2026-09-18T10:00:00Z', items: [{ id: randomUUID(), item_name: 'Sur mesure', quantity: 1, unit_price: 10, from_stock: false, unit_cost: 1 }] });
+    const o2 = (await one(c, "insert into public.orders (customer, template_id, item_name, status, sale_id) values ('Paul', $1, 'Éphémère', 'delivered', $2) returning id", [t, sale])).id;
+    await c.query('delete from public.templates where id = $1', [t]);
+    await c.query('select public.p3d_delete_sale($1)', [sale]);
+    const r = await one(c, 'select template_id, sale_id, status from public.orders where id = $1', [o2]);
+    assert.deepEqual(r, { template_id: null, sale_id: null, status: 'ready' });
+  });
+
+  // livrer une commande = une seule action : la vente porte order_id, la base livre la commande
+  await asUser(admin, A, async (c) => {
+    // refus attendus dans la même transaction : point de reprise, sinon PostgreSQL ignore toute la suite
+    const refus = async (fn) => {
+      await c.query('savepoint refus');
+      const code = await pgCode(fn());
+      await c.query('rollback to savepoint refus');
+      return code;
+    };
+    const o = (await one(c, "insert into public.orders (customer, item_name, status) values ('Léa', 'Vase', 'ready') returning id")).id;
+    const sale = randomUUID();
+    const bundle = await rpc(c, 'p3d_record_sale', { id: sale, order_id: o, channel: 'direct', occurred_at: '2026-09-18T11:00:00Z', items: [{ id: randomUUID(), item_name: 'Vase', quantity: 1, unit_price: 20, from_stock: false, unit_cost: 2 }] });
+    assert.equal(bundle.orders.length, 1, 'la commande livrée revient avec la vente (l’appareil l’affiche tout de suite)');
+    assert.equal(bundle.orders[0].status, 'delivered');
+    assert.equal(bundle.orders[0].sale_id, sale);
+    // rejouer la même vente (réseau coupé après l'envoi) : pas d'erreur, même paquet
+    const replay = await rpc(c, 'p3d_record_sale', { id: sale, order_id: o, channel: 'direct', items: [{ id: randomUUID(), item_name: 'Vase', quantity: 1, unit_price: 20, from_stock: false }] });
+    assert.equal(replay.sales[0].id, sale);
+    // deuxième vente pour la même commande : refusée, et RIEN n'est enregistré
+    const other = randomUUID();
+    assert.equal(await refus(() => rpc(c, 'p3d_record_sale', { id: other, order_id: o, channel: 'direct', items: [{ id: randomUUID(), item_name: 'Vase', quantity: 1, unit_price: 20, from_stock: false }] })), 'P3D11');
+    assert.equal((await one(c, 'select count(*)::int as n from public.sales where id = $1', [other])).n, 0, 'aucune deuxième vente');
+    // commande annulée : la livrer est refusé
+    const oc = (await one(c, "insert into public.orders (item_name, status) values ('Lampe', 'cancelled') returning id")).id;
+    assert.equal(await refus(() => rpc(c, 'p3d_record_sale', { id: randomUUID(), order_id: oc, channel: 'direct', items: [{ id: randomUUID(), item_name: 'Lampe', quantity: 1, unit_price: 5, from_stock: false }] })), 'P3D11');
+    // annuler la vente : la commande redevient « prête » et revient dans la réponse
+    const del = await rpc(c, 'p3d_delete_sale', sale, 'p_id');
+    assert.equal(del.orders.length, 1);
+    assert.equal(del.orders[0].status, 'ready');
+    assert.equal(del.orders[0].sale_id, null);
+  });
 });

@@ -170,6 +170,27 @@ const REMOTE = {
     const rows = await b.exec(b.sb.from('templates').delete().eq('id', p.id).select('id'));
     return { deleted: { templates: rows.map((r) => r.id) }, pullAfter: true };
   },
+  async 'order.save'(b, p) {
+    return { orders: nothingSaved(await b.exec(b.sb.from('orders').upsert(pick(p, ORDER_FIELDS), { onConflict: 'id' }).select()), 'Cette commande', 'supprimée') };
+  },
+  async 'order.patch'(b, p) {
+    const fields = pick(p.fields || {}, ORDER_FIELDS.filter((f) => f !== 'id' && f !== 'sale_id'));
+    let q = b.sb.from('orders').update(fields).eq('id', p.id);
+    if (Array.isArray(p.from)) q = q.in('status', p.from);
+    const rows = await b.exec(q.select());
+    if (rows.length) return { orders: rows };
+    // condition d'état non remplie (commande livrée ou annulée ailleurs entre-temps) : rien n'est
+    // écrasé, l'appareil reprend simplement l'état de la base
+    if (Array.isArray(p.from)) {
+      const cur = await b.exec(b.sb.from('orders').select().eq('id', p.id));
+      if (cur.length) return { orders: cur };
+    }
+    return { orders: nothingSaved(rows, 'Cette commande', 'supprimée') };
+  },
+  async 'order.delete'(b, p) {
+    const rows = await b.exec(b.sb.from('orders').delete().eq('id', p.id).select('id'));
+    return { deleted: { orders: rows.map((r) => r.id) } };
+  },
   async 'production.launch'(b, p) {
     return b.exec(b.sb.rpc('p3d_launch_production', { p }));
   },

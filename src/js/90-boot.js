@@ -302,6 +302,9 @@ const Boot = {
   },
 
   offerUpdate(worker) {
+    // une version encore plus récente peut arriver avant le clic : elle remplace celle proposée
+    // d'abord (qui devient caduque et ignorerait la demande de mise à jour)
+    this.pendingWorker = worker;
     if (this.updateOffered) return;
     this.updateOffered = true;
     const bar = document.createElement('div');
@@ -311,9 +314,11 @@ const Boot = {
       <button class="btn btn-primary h-8 rounded-lg px-3 text-[13px]" data-update>Mettre à jour</button>
       <button class="grid h-8 w-8 place-items-center text-slate-500 hover:text-slate-200" data-dismiss aria-label="Plus tard">${icon('X', 'w-4 h-4')}</button>
     </div>`);
-    bar.querySelector('[data-update]').addEventListener('click', () => {
+    bar.querySelector('[data-update]').addEventListener('click', async () => {
       this.updateRequested = true;
-      worker.postMessage({ type: 'SKIP_WAITING' });
+      const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
+      const target = (reg && reg.waiting) || this.pendingWorker;
+      if (target) target.postMessage({ type: 'SKIP_WAITING' });
       setTimeout(() => location.reload(), 4000);
     });
     bar.querySelector('[data-dismiss]').addEventListener('click', () => bar.remove());

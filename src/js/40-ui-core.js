@@ -78,7 +78,7 @@ function selectInput(name, options, value, { attrs = null, cls = '' } = {}) {
 function segmented(name, options, value, { action = 'segment', cls = '' } = {}) {
   return html`<div class="inline-flex rounded-xl border border-white/10 bg-ink-900/80 p-1 ${cls}" role="tablist">
     ${options.map((o) => html`<button type="button" role="tab" aria-selected="${o.value === value}" data-action="${action}" data-name="${name}" data-value="${o.value}"
-      class="h-8 rounded-lg px-3 text-[13px] font-medium transition ${o.value === value ? 'bg-ink-700 text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,.06)]' : 'text-slate-400 hover:text-slate-200'}">${o.label}</button>`)}
+      class="h-8 whitespace-nowrap rounded-lg px-3 text-[13px] font-medium transition ${o.value === value ? 'bg-ink-700 text-slate-50 shadow-[inset_0_1px_0_rgba(255,255,255,.06)]' : 'text-slate-400 hover:text-slate-200'}">${o.label}</button>`)}
   </div>`;
 }
 
@@ -518,17 +518,20 @@ const App = {
 
   updateChrome() {
     const route = this.route.name;
-    const navItem = NAV.find((n) => n.name === route) || (route === 'historique' ? { label: 'Historique' } : NAV[0]);
+    // pages hors menu : leur titre, et l'onglet du bas auquel elles se rattachent
+    const EXTRA = { historique: { label: 'Historique', parent: 'dashboard' }, bilan: { label: 'Bilan du mois', parent: 'dashboard' }, etiquettes: { label: 'Étiquettes', parent: 'bobines' } };
+    const navItem = NAV.find((n) => n.name === route) || EXTRA[route] || NAV[0];
+    const parent = EXTRA[route] ? EXTRA[route].parent : route;
     const title = $('#top-title');
     if (title) title.textContent = navItem.label;
     const side = $('#side-nav');
     if (side) {
-      side.innerHTML = String(html`${NAV.map((n) => html`<a href="${n.hash}" class="nav-link ${n.name === route ? 'nav-active' : ''}">${icon(n.icon, 'w-5 h-5')}<span>${n.label}</span></a>`)}
+      side.innerHTML = String(html`${NAV.map((n) => html`<a href="${n.hash}" class="nav-link ${n.name === (route === 'historique' ? '' : parent) ? 'nav-active' : ''}">${icon(n.icon, 'w-5 h-5')}<span>${n.label}</span></a>`)}
         <a href="#/historique" class="nav-link ${route === 'historique' ? 'nav-active' : ''}">${icon('History', 'w-5 h-5')}<span>Historique</span></a>`);
     }
     const bottom = $('#bottom-nav');
     if (bottom) {
-      bottom.innerHTML = String(html`<div class="grid grid-cols-5">${NAV.map((n) => html`<a href="${n.hash}" class="bottom-link ${n.name === route || (route === 'historique' && n.name === 'dashboard') ? 'bottom-active' : ''}" aria-label="${n.label}">
+      bottom.innerHTML = String(html`<div class="grid grid-cols-5">${NAV.map((n) => html`<a href="${n.hash}" class="bottom-link ${n.name === parent ? 'bottom-active' : ''}" aria-label="${n.label}">
         <span class="bottom-ic">${icon(n.icon, 'w-[22px] h-[22px]')}</span><span class="text-[11px] font-medium">${n.short}</span></a>`)}</div>`);
     }
     const s = Sync.summary();
@@ -658,6 +661,7 @@ Actions.quick = () => {
     render: () => html`<div class="space-y-2.5">
       ${item('Printer', 'Lancer une production', hasTemplates ? 'Déduit le filament et ajoute les pièces au stock' : "Crée d'abord un template", 'q-production')}
       ${item('ShoppingBag', 'Enregistrer une vente', 'Déstocke et calcule la marge nette', 'q-sale', 'text-cyan-300')}
+      ${item('ClipboardList', 'Nouvelle commande', 'Ce qu’un client a demandé, pour quand', 'q-order', 'text-cyan-300')}
       ${item('Flame', 'Déclarer un print raté', 'Déduit le filament et compte la perte', 'q-failure', 'text-rose-300')}
       ${item('Disc3', 'Ajouter une bobine', 'Nouveau consommable', 'q-spool', 'text-violet-300')}
       ${item('FileUp', 'Nouveau template', 'Avec import Bambu Studio', 'q-template', 'text-amber-300')}
@@ -666,6 +670,7 @@ Actions.quick = () => {
       'q-production': (el, e, m) => { m.close(); openProductionModal({ kind: 'production' }); },
       'q-sale': (el, e, m) => { m.close(); openSaleModal({}); },
       'q-failure': (el, e, m) => { m.close(); openProductionModal({ kind: 'failure' }); },
+      'q-order': (el, e, m) => { m.close(); openOrderModal({}); },
       'q-spool': (el, e, m) => { m.close(); openSpoolModal({}); },
       'q-template': (el, e, m) => { m.close(); openTemplateModal({}); },
     },
@@ -678,7 +683,10 @@ async function saveFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
   try {
     const file = new File([blob], filename, { type: mime });
-    if (navigator.canShare && navigator.canShare({ files: [file] }) && /iphone|ipad|android/i.test(navigator.userAgent)) {
+    // téléphone ou tablette (l'iPad se présente comme un Mac, mais tactile) : feuille de partage
+    const ua = navigator.userAgent;
+    const mobile = /iphone|ipad|android/i.test(ua) || (/Macintosh/.test(ua) && navigator.maxTouchPoints > 1);
+    if (navigator.canShare && navigator.canShare({ files: [file] }) && mobile) {
       await navigator.share({ files: [file], title: filename });
       return true;
     }

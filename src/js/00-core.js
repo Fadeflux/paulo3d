@@ -4,7 +4,7 @@
    ============================================================================= */
 
 const APP_VERSION = '__APP_VERSION__';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const LS = {
   supa: 'p3d_supabase',
@@ -27,7 +27,7 @@ const ADJUST_REASONS = {
 };
 
 const TABLES = ['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
-  'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations'];
+  'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations', 'orders'];
 
 const PK = (table) => (table === 'settings' ? 'owner_id' : 'id');
 

@@ -88,3 +88,46 @@
   .chip, [role='tab'], .hit { position: relative; }
   input, select, textarea { font-size: 16px !important; }
 }
+
+
+/* ---------- impression : bilan du mois, étiquettes des bobines ---------- */
+#print-root { display: none; }
+.pr-preview { overflow-x: auto; }
+.pr-sheet { background: #fff; color: #111827; border-radius: 16px; padding: 20px; font-size: 12px; line-height: 1.45; }
+.pr-sheet h1 { font-size: 20px; font-weight: 700; margin: 0; }
+.pr-sheet h2 { font-size: 13px; font-weight: 700; margin: 18px 0 6px; text-transform: uppercase; letter-spacing: .04em; color: #374151; }
+.pr-head p, .pr-foot, .pr-empty { color: #6b7280; }
+.pr-foot { margin-top: 14px; font-size: 10px; }
+.pr-kpis { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; margin-top: 12px; }
+.pr-kpi { border: 1px solid #e5e7eb; border-radius: 8px; padding: 6px 8px; }
+.pr-kpi span { display: block; font-size: 10px; color: #6b7280; }
+.pr-kpi b { display: block; font-size: 15px; font-variant-numeric: tabular-nums; }
+.pr-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+.pr-table th { text-align: left; font-weight: 600; color: #374151; border-bottom: 1.5px solid #9ca3af; padding: 4px 6px; }
+.pr-table td { border-bottom: 1px solid #e5e7eb; padding: 4px 6px; vertical-align: top; }
+.pr-table .num { text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.pr-table tr { break-inside: avoid; }
+.pr-total td { font-weight: 700; border-top: 1.5px solid #9ca3af; }
+.pr-labels { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 10px; }
+.pr-label { background: #fff; color: #111827; border: 1px dashed #9ca3af; border-radius: 10px; padding: 10px; display: flex; gap: 10px; align-items: center; break-inside: avoid; }
+.pr-label .qr { width: 96px; height: 96px; flex: none; }
+.pr-label .qr svg { width: 100%; height: 100%; display: block; }
+.pr-label .txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; font-size: 12px; }
+.pr-label .txt b { font-size: 15px; }
+.pr-label .txt small { color: #6b7280; font-size: 10px; }
+.pr-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 999px; border: 1px solid #6b7280; vertical-align: -1px; }
+@media (min-width: 640px) { .pr-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* seulement quand l'appli imprime une feuille (classe pr-on) : ailleurs, Ctrl+P imprime la page telle quelle */
+@media print {
+  @page { size: A4; margin: 12mm; }
+  html.pr-on, html.pr-on body { background: #fff !important; }
+  html.pr-on body::before { display: none !important; }
+  html.pr-on body > *:not(#print-root) { display: none !important; }
+  html.pr-on #print-root { display: block !important; }
+  #print-root .pr-sheet { border-radius: 0; padding: 0; }
+  .pr-kpis { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .pr-sheet-labels .pr-labels { grid-template-columns: repeat(2, 1fr); gap: 4mm; }
+  .pr-sheet-labels .pr-label { height: 38mm; padding: 3mm; border-radius: 3mm; }
+  .pr-sheet-labels .pr-label .qr { width: 30mm; height: 30mm; }
+}

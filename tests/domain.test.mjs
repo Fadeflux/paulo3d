@@ -592,6 +592,29 @@ test('sauvegarde : rappel après 30 jours, seulement s’il y a des données à 
   assert.ok(app.SETTINGS_FIELDS.includes('last_backup_at'), 'la date est partagée entre appareils (table settings)');
 });
 
+test('commandes : échéance en jours locaux, tri par urgence, quantité entière, états contrôlés', () => {
+  const now = new Date(2026, 8, 18, 23, 30); // 18/09 à 23 h 30, heure locale
+  assert.equal(app.orderDueIn({ due_date: '2026-09-18' }, now), 0, "aujourd'hui, même tard le soir");
+  assert.equal(app.orderDueIn({ due_date: '2026-09-19' }, now), 1);
+  assert.equal(app.orderDueIn({ due_date: '2026-09-15' }, now), -3);
+  assert.equal(app.orderDueIn({ due_date: null }, now), null);
+  const f = fixture();
+  const order = (id, extra) => ['order.save', { id, customer: '', template_id: null, item_name: 'Pièce', quantity: 1, unit_price: null, due_date: null, channel: null, note: null, status: 'todo', sale_id: null, ...extra }];
+  const ids = [app.uuid(), app.uuid(), app.uuid(), app.uuid()];
+  let S = applyOps(app, [...f.ops,
+    order(ids[0], { due_date: '2026-09-25' }),
+    order(ids[1], { due_date: '2026-09-16' }),
+    order(ids[2], {}),
+    order(ids[3], { due_date: '2026-09-20', status: 'delivered' })]);
+  deepEqual(app.openOrders(view(S), now).map((o) => o.id), [ids[1], ids[0], ids[2]], 'en retard d’abord, sans date en dernier, livrées exclues');
+  assert.equal(app.orderTotal({ unit_price: 13.9, quantity: 3 }), 41.7);
+  assert.equal(app.orderTotal({ unit_price: null, quantity: 3 }), null);
+  assert.throws(() => applyOps(app, [...f.ops, order(app.uuid(), { quantity: 1.5 })]), /Nombre entier de pièces/);
+  assert.throws(() => applyOps(app, [...f.ops, order(app.uuid(), { status: 'perdue' })]), /État de commande/);
+  S = applyOps(app, [...f.ops, order(ids[0], { template_id: f.T, item_name: 'Support' }), ['template.delete', { id: f.T }]]);
+  assert.equal(S.orders.get(ids[0]).template_id, null, 'template supprimé : la commande reste, sans template (comme la base)');
+});
+
 test('filtres mémorisés : jamais de liste vide sans bouton pour en sortir', () => {
   const F = app.uuid.constructor; // constructeur Function du bac à sable
   const App = new F('return App')();

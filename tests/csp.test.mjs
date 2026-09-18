@@ -1,5 +1,5 @@
 // Politique de sécurité de la page (CSP) du site RÉEL construit (.dev/site/index.html) :
-// seul le script de la page (reconnu par son empreinte) et les 4 bibliothèques prévues peuvent s'exécuter.
+// seul le script de la page (reconnu par son empreinte) et les 5 bibliothèques prévues peuvent s'exécuter.
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import crypto from 'node:crypto';
@@ -29,7 +29,7 @@ test('script de la page : autorisé par son empreinte exacte (un seul script int
   assert.ok(directive('script-src').includes(hash), 'empreinte du script présente dans script-src');
 });
 
-test('bibliothèques : seulement les 4 adresses exactes, jamais tout jsdelivr', () => {
+test('bibliothèques : seulement les 5 adresses exactes, jamais tout jsdelivr', () => {
   const src = directive('script-src');
   for (const url of Object.values(CDN)) assert.ok(src.includes(url), url);
   assert.ok(!src.includes('https://cdn.jsdelivr.net') && !src.some((s) => /^https:\/\/cdn\.jsdelivr\.net\/?$/.test(s)), 'pas d’autorisation de tout le CDN');

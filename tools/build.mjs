@@ -33,7 +33,7 @@ const lf = (t) => t.replace(/\r\n?/g, '\n');
 let js = lf(files.map((f) => `/* ==== ${f} ==== */\n${fs.readFileSync(path.join(jsDir, f), 'utf8')}`).join('\n'));
 const htmlTpl = lf(read('src/index.html'));
 
-for (const k of ['jszip', 'qrcode']) if (!js.includes(CDN[k])) fail(`l'adresse ${k} du code ne correspond pas à tools/cdn.mjs`);
+for (const k of ['jszip', 'qrcode', 'jsqr']) if (!js.includes(CDN[k])) fail(`l'adresse ${k} du code ne correspond pas à tools/cdn.mjs`);
 for (const k of ['supabase', 'chart']) if (!htmlTpl.includes(CDN[k])) fail(`l'adresse ${k} de index.html ne correspond pas à tools/cdn.mjs`);
 
 // 2. Icônes Lucide : seulement celles utilisées, intégrées au fichier (rapide, marche hors-ligne)
@@ -77,7 +77,7 @@ for (const k of Object.keys(CDN)) {
 }
 for (const url of Object.keys(sri)) if (!Object.values(CDN).includes(url)) delete sri[url];
 fs.writeFileSync(sriFile, `${JSON.stringify(sri, null, 2)}\n`);
-js = js.replace("'__SRI_JSZIP__'", () => JSON.stringify(sri[CDN.jszip])).replace("'__SRI_QR__'", () => JSON.stringify(sri[CDN.qrcode]));
+js = js.replace("'__SRI_JSZIP__'", () => JSON.stringify(sri[CDN.jszip])).replace("'__SRI_QR__'", () => JSON.stringify(sri[CDN.qrcode])).replace("'__SRI_JSQR__'", () => JSON.stringify(sri[CDN.jsqr]));
 
 // 5. Version = empreinte du contenu (même contenu → même version → pas de fausse mise à jour)
 const pkg = JSON.parse(read('package.json'));

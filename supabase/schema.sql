@@ -1,6 +1,6 @@
 -- =============================================================================
 --  Paulo3D — Base de données Supabase (PostgreSQL)
---  Version du schéma : 2
+--  Version du schéma : 3
 -- -----------------------------------------------------------------------------
 --  COMMENT L'INSTALLER
 --    1. Supabase > ton projet > « SQL Editor » > « New query »
@@ -35,7 +35,7 @@ returns integer
 language sql
 stable
 set search_path = ''
-as $$ select 2 $$;
+as $$ select 3 $$;
 
 create or replace function public.p3d_touch_updated_at()
 returns trigger
@@ -338,6 +338,27 @@ create table if not exists public.sale_allocations (
   foreign key (lot_id, owner_id) references public.production_stock (id, owner_id)
 );
 
+-- Commandes clients : ce qui a été promis (pièce, quantité, prix, date), jusqu'à la livraison
+create table if not exists public.orders (
+  id          uuid primary key default gen_random_uuid(),
+  owner_id    uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  customer    text not null default '' check (char_length(customer) <= 120),
+  template_id uuid,
+  item_name   text not null check (char_length(btrim(item_name)) between 1 and 120),
+  quantity    integer not null default 1 check (quantity between 1 and 10000),
+  unit_price  numeric(10,2) check (unit_price is null or unit_price >= 0),
+  due_date    date,
+  channel     text check (channel is null or char_length(channel) <= 40),
+  note        text check (note is null or char_length(note) <= 1000),
+  status      text not null default 'todo' check (status in ('todo', 'ready', 'delivered', 'cancelled')),
+  sale_id     uuid,
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now(),
+  unique (id, owner_id),
+  foreign key (template_id, owner_id) references public.templates (id, owner_id) on delete set null (template_id),
+  foreign key (sale_id, owner_id) references public.sales (id, owner_id) on delete set null (sale_id)
+);
+
 
 -- -----------------------------------------------------------------------------
 -- 2. Index
@@ -366,6 +387,9 @@ create index if not exists sale_items_owner_updated_idx        on public.sale_it
 create index if not exists sale_items_sale_idx                 on public.sale_items (sale_id);
 create index if not exists sale_items_template_idx             on public.sale_items (template_id);
 create index if not exists sale_allocations_owner_updated_idx  on public.sale_allocations (owner_id, updated_at);
+create index if not exists orders_owner_updated_idx            on public.orders (owner_id, updated_at);
+create index if not exists orders_template_idx                 on public.orders (template_id);
+create index if not exists orders_sale_idx                     on public.orders (sale_id);
 create index if not exists sale_allocations_item_idx           on public.sale_allocations (sale_item_id);
 create index if not exists sale_allocations_lot_idx            on public.sale_allocations (lot_id);
 
@@ -486,7 +510,7 @@ declare
   t text;
 begin
   foreach t in array array['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
-                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']
+                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations', 'orders']
   loop
     execute format('alter table public.%I alter column updated_at set default clock_timestamp()', t);
     execute format('drop trigger if exists p3d_a_touch on public.%I', t);
@@ -572,12 +596,12 @@ do $$
 declare
   t text;
 begin
-  foreach t in array array['machines', 'spools', 'templates', 'productions', 'production_stock', 'stock_adjustments', 'sales']
+  foreach t in array array['machines', 'spools', 'templates', 'productions', 'production_stock', 'stock_adjustments', 'sales', 'orders']
   loop
     execute format('drop trigger if exists p3d_z_remember_delete on public.%I', t);
     execute format('create trigger p3d_z_remember_delete after delete on public.%I for each row execute function public.p3d_remember_delete()', t);
   end loop;
-  foreach t in array array['machines', 'spools', 'templates']
+  foreach t in array array['machines', 'spools', 'templates', 'orders']
   loop
     execute format('drop trigger if exists p3d_0_block_resurrection on public.%I', t);
     execute format('create trigger p3d_0_block_resurrection before insert on public.%I for each row execute function public.p3d_block_resurrection()', t);
@@ -936,7 +960,8 @@ as $$
     'production_stock', coalesce((select jsonb_agg(to_jsonb(l)) from public.production_stock l
                                    where l.id in (select a.lot_id from public.sale_allocations a
                                                     join public.sale_items i on i.id = a.sale_item_id
-                                                   where i.sale_id = p_id)), '[]'::jsonb)
+                                                   where i.sale_id = p_id)), '[]'::jsonb),
+    'orders',           coalesce((select jsonb_agg(to_jsonb(o)) from public.orders o where o.sale_id = p_id), '[]'::jsonb)
   )
 $$;
 
@@ -961,6 +986,8 @@ declare
   v_cogs      numeric := 0;
   v_amount    numeric := 0;
   v_pos       integer := 0;
+  v_order     uuid := nullif(p ->> 'order_id', '')::uuid;
+  v_status    text;
 begin
   perform public.p3d_require_user();
   if v_id is null then
@@ -975,6 +1002,16 @@ begin
   end if;
   if jsonb_typeof(p -> 'items') is distinct from 'array' or jsonb_array_length(p -> 'items') = 0 then
     raise exception using errcode = 'P3D09', message = 'Une vente doit contenir au moins un article.';
+  end if;
+  -- vente d'une commande : jamais deux ventes pour la même commande (même règle dans l'appli).
+  -- « for update » : deux appareils qui livrent en même temps passent l'un après l'autre.
+  if v_order is not null then
+    select o.status into v_status from public.orders o where o.id = v_order for update;
+    if v_status = 'delivered' then
+      raise exception using errcode = 'P3D11', message = 'Cette commande est déjà livrée (vente déjà enregistrée, peut-être sur un autre appareil).';
+    elsif v_status = 'cancelled' then
+      raise exception using errcode = 'P3D11', message = 'Cette commande est annulée : remets-la « à faire » avant de la livrer.';
+    end if;
   end if;
 
   begin
@@ -1041,6 +1078,12 @@ begin
      set amount = v_amount + shipping_charged, cogs = v_cogs
    where id = v_id;
 
+  -- la commande est livrée dans la MÊME transaction : jamais la vente sans la commande, ni l'inverse
+  if v_order is not null then
+    update public.orders set status = 'delivered', sale_id = v_id
+     where id = v_order and status in ('todo', 'ready');
+  end if;
+
   return public.p3d_sale_bundle(v_id);
 end
 $$;
@@ -1056,8 +1099,14 @@ declare
   v_items uuid[];
   v_alloc uuid[];
   v_done  uuid[];
+  v_orders uuid[];
 begin
   perform public.p3d_require_user();
+  -- commande livrée par cette vente : elle redevient « prête » (même règle dans l'appli) ;
+  -- la clé étrangère efface ensuite son lien vers la vente
+  with u as (update public.orders set status = case when status = 'delivered' then 'ready' else status end
+              where sale_id = p_id returning id)
+  select coalesce(array_agg(u.id), '{}') into v_orders from u;
   select coalesce(array_agg(i.id), '{}') into v_items from public.sale_items i where i.sale_id = p_id;
   select coalesce(array_agg(distinct a.lot_id), '{}'), coalesce(array_agg(a.id), '{}')
     into v_lots, v_alloc
@@ -1075,7 +1124,8 @@ begin
       'sales',            to_jsonb(v_done),
       'sale_items',       to_jsonb(v_items),
       'sale_allocations', to_jsonb(v_alloc)),
-    'production_stock', coalesce((select jsonb_agg(to_jsonb(l)) from public.production_stock l where l.id = any (v_lots)), '[]'::jsonb)
+    'production_stock', coalesce((select jsonb_agg(to_jsonb(l)) from public.production_stock l where l.id = any (v_lots)), '[]'::jsonb),
+    'orders',           coalesce((select jsonb_agg(to_jsonb(o)) from public.orders o where o.id = any (v_orders)), '[]'::jsonb)
   );
 end
 $$;
@@ -1090,7 +1140,7 @@ declare
   t text;
 begin
   foreach t in array array['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
-                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']
+                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations', 'orders']
   loop
     execute format('alter table public.%I enable row level security', t);
     execute format('drop policy if exists p3d_owner_all on public.%I', t);
@@ -1136,7 +1186,7 @@ declare
   t text;
 begin
   foreach t in array array['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
-                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']
+                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations', 'orders']
   loop
     execute format('drop policy if exists p3d_mfa on public.%I', t);
     execute format('create policy p3d_mfa on public.%I as restrictive for all to authenticated '
@@ -1211,7 +1261,7 @@ declare
 begin
   if exists (select 1 from pg_publication where pubname = 'supabase_realtime') then
     foreach t in array array['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
-                             'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']
+                             'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations', 'orders']
     loop
       if not exists (select 1 from pg_publication_tables
                       where pubname = 'supabase_realtime' and schemaname = 'public' and tablename = t) then
@@ -1239,4 +1289,4 @@ as $$ select true $$;
 revoke execute on function public.p3d_ping() from public;
 grant execute on function public.p3d_ping() to anon, authenticated;
 
--- Fin du script. Vérification rapide : « select public.p3d_version(); » doit renvoyer 2.
+-- Fin du script. Vérification rapide : « select public.p3d_version(); » doit renvoyer 3.

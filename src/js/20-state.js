@@ -16,6 +16,7 @@ class OpError extends Error {
 const SPOOL_FIELDS = ['id', 'brand', 'material', 'color_name', 'color_hex', 'price', 'initial_weight_g', 'tare_g', 'purchased_at', 'notes', 'archived'];
 const MACHINE_FIELDS = ['id', 'name', 'model', 'hourly_rate', 'is_default', 'archived'];
 const TEMPLATE_FIELDS = ['id', 'name', 'description', 'photo', 'machine_id', 'pieces_per_print', 'materials', 'purge_g', 'hardware_cost', 'print_time_min', 'labor_min', 'pricing_mode', 'price_coef', 'target_margin_pct', 'catalog_price', 'archived'];
+const ORDER_FIELDS = ['id', 'customer', 'template_id', 'item_name', 'quantity', 'unit_price', 'due_date', 'channel', 'note', 'status', 'sale_id'];
 const PRODUCTION_FIELDS = ['id', 'kind', 'template_id', 'item_name', 'quantity', 'failed_pct', 'failure_reason', 'machine_id', 'machine_rate', 'labor_rate', 'grams_total', 'purge_g_total', 'print_time_min_total', 'labor_min_total', 'material_cost', 'purge_cost', 'hardware_cost', 'machine_cost', 'labor_cost', 'total_cost', 'unit_cost', 'consumption', 'note', 'occurred_at'];
 
 function pick(obj, fields) {
@@ -166,6 +167,55 @@ const OPS = {
     },
   },
 
+  // Commandes clients (identifiant créé par l'appareil, comme les bobines et les templates)
+  'order.save': {
+    label: (p) => `Commande · ${p.item_name}`,
+    keys: (p) => [`orders:${p.id}`],
+    validate(V, p) {
+      return orderFieldsProblem(p) || (!ORDER_STATUSES.includes(p.status || 'todo') ? new OpError('P3D09', 'État de commande inconnu.') : null);
+    },
+    apply(V, p, ctx) {
+      const cur = V.orders.get(p.id);
+      const row = {
+        customer: '', template_id: null, unit_price: null, due_date: null, channel: null, note: null, status: 'todo', sale_id: null,
+        ...(cur || {}), ...pick(p, ORDER_FIELDS), owner_id: ctx.userId, ...stamp(ctx, cur),
+      };
+      row.quantity = Math.round(toNum(row.quantity, 1));
+      V.orders.set(row.id, row);
+    },
+  },
+
+  // Modification ou changement d'état : seuls les champs envoyés changent (une modification faite
+  // ailleurs n'est pas écrasée). `from` : le changement d'état n'a lieu QUE si la commande est encore
+  // dans l'un de ces états (la base applique la même condition) — une commande livrée sur un autre
+  // appareil ne redevient jamais « prête » par une action partie en retard.
+  'order.patch': {
+    label: (p) => (p.fields && p.fields.status ? `Commande ${ORDER_STATUS[p.fields.status] ? ORDER_STATUS[p.fields.status].label.toLowerCase() : ''}` : 'Modification de commande'),
+    keys: (p) => [`orders:${p.id}`],
+    validate(V, p) {
+      if (!V.orders.has(p.id)) return new OpError('23503', 'Commande introuvable.');
+      const f = p.fields || {};
+      if ('status' in f && !ORDER_STATUSES.includes(f.status)) return new OpError('P3D09', 'État de commande inconnu.');
+      if ('sale_id' in f) return new OpError('P3D09', 'Le lien vers la vente est géré par la vente elle-même.');
+      return orderFieldsProblem(f, true);
+    },
+    apply(V, p, ctx) {
+      const cur = V.orders.get(p.id);
+      if (!cur) return;
+      if (Array.isArray(p.from) && !p.from.includes(cur.status)) return;
+      V.orders.set(p.id, { ...cur, ...pick(p.fields || {}, ORDER_FIELDS.filter((f) => f !== 'id' && f !== 'sale_id')), updated_at: ctx.now });
+    },
+  },
+
+  'order.delete': {
+    label: () => 'Suppression de commande',
+    isDelete: true,
+    keys: () => [],
+    apply(V, p) {
+      V.orders.delete(p.id);
+    },
+  },
+
   'template.save': {
     label: (p) => `Template « ${p.name} »`,
     keys: (p) => [`templates:${p.id}`],
@@ -204,6 +254,7 @@ const OPS = {
     keys: () => [],
     apply(V, p) {
       V.templates.delete(p.id);
+      setNull(V, 'orders', 'template_id', p.id);
       setNull(V, 'productions', 'template_id', p.id);
       setNull(V, 'production_stock', 'template_id', p.id);
       setNull(V, 'sale_items', 'template_id', p.id);
@@ -318,10 +369,14 @@ const OPS = {
 
   'sale.record': {
     label: (p) => `Vente · ${(p.items || [])[0] ? p.items[0].item_name : ''}`,
-    keys: (p) => [`sales:${p.id}`],
+    keys: (p) => [`sales:${p.id}`, ...(p.order_id ? [`orders:${p.order_id}`] : [])],
     done: (S, p) => S.sales.has(p.id),
     validate(V, p) {
       if (!Array.isArray(p.items) || !p.items.length) return new OpError('P3D09', 'Une vente doit contenir au moins un article.');
+      // vente d'une commande : jamais deux ventes pour la même commande (même règle dans p3d_record_sale)
+      const o = p.order_id ? V.orders.get(p.order_id) : null;
+      if (o && o.status === 'delivered') return new OpError('P3D11', 'Cette commande est déjà livrée (vente déjà enregistrée, peut-être sur un autre appareil).');
+      if (o && o.status === 'cancelled') return new OpError('P3D11', 'Cette commande est annulée : remets-la « à faire » avant de la livrer.');
       for (const i of p.items) {
         if (!isPieceCount(i.quantity)) return new OpError('P3D09', `Quantité invalide pour « ${String(i.item_name || '').trim()} » : ${PIECES_ERROR}`);
         if (toNum(i.unit_price) < 0) return new OpError('P3D09', 'Prix invalide.');
@@ -370,6 +425,9 @@ const OPS = {
       sale.net_margin = roundDb(sale.amount - sale.cogs - sale.shipping_cost - sale.packaging_cost - sale.platform_fee, 4);
       V.sales.set(p.id, sale);
       for (const id of lots) recomputeLot(V, id);
+      // la commande est livrée dans la MÊME action que la vente : jamais l'une sans l'autre
+      const o = p.order_id ? V.orders.get(p.order_id) : null;
+      if (o && (o.status === 'todo' || o.status === 'ready')) V.orders.set(o.id, { ...o, status: 'delivered', sale_id: p.id, updated_at: ctx.now });
     },
   },
 
@@ -377,8 +435,12 @@ const OPS = {
     label: () => 'Annulation de vente',
     isDelete: true,
     keys: () => [],
-    apply(V, p) {
+    apply(V, p, ctx) {
       V.sales.delete(p.id);
+      // commande livrée par cette vente : elle redevient « prête » (même règle dans p3d_delete_sale)
+      for (const o of valuesOf(V.orders)) {
+        if (o.sale_id === p.id) V.orders.set(o.id, { ...o, sale_id: null, status: o.status === 'delivered' ? 'ready' : o.status, updated_at: ctx ? ctx.now : o.updated_at });
+      }
       const lots = new Set();
       for (const i of valuesOf(V.sale_items)) {
         if (i.sale_id !== p.id) continue;
@@ -520,6 +582,7 @@ const NUMERIC_FIELDS = {
   sales: ['amount', 'shipping_charged', 'shipping_cost', 'packaging_cost', 'platform_fee', 'cogs', 'net_margin'],
   sale_items: ['quantity', 'unit_price', 'unit_cost', 'cogs', 'position'],
   sale_allocations: ['quantity', 'unit_cost'],
+  orders: ['quantity', 'unit_price'],
 };
 
 function normalizeRow(table, row) {
@@ -792,7 +855,7 @@ const Store = {
   // (sinon elle resterait affichée jusqu'au prochain rapprochement complet)
   forgetMissing(op) {
     if (!/\.(save|patch)$/.test(String(op.type))) return;
-    const table = { spool: 'spools', template: 'templates', machine: 'machines' }[String(op.type).split('.')[0]];
+    const table = { spool: 'spools', template: 'templates', machine: 'machines', order: 'orders' }[String(op.type).split('.')[0]];
     if (table && op.payload && op.payload.id) this.deleteIds(table, [op.payload.id]);
   },
 

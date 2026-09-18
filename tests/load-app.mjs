@@ -6,11 +6,12 @@ import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
-export function loadApp() {
+// extra : globales en plus (ex. la bibliothèque qrcode pour les étiquettes)
+export function loadApp(extra = {}) {
   const file = path.join(ROOT, '.dev', 'app.js');
   if (!fs.existsSync(file)) throw new Error('Lance d’abord « node tools/build.mjs --dev »');
   const code = fs.readFileSync(file, 'utf8');
-  const ctx = vm.createContext({ console, crypto: globalThis.crypto, setTimeout, clearTimeout, TextEncoder, TextDecoder, URL, URLSearchParams, atob, btoa });
+  const ctx = vm.createContext({ console, crypto: globalThis.crypto, setTimeout, clearTimeout, TextEncoder, TextDecoder, URL, URLSearchParams, atob, btoa, ...extra });
   vm.runInContext(code, ctx, { filename: 'app.js' });
   const names = [
     'TABLES', 'PK', 'OPS', 'OpError', 'DEFAULT_SETTINGS', 'Store', 'Sync', 'DemoBackend',
@@ -22,7 +23,9 @@ export function loadApp() {
     'normalizeMaterial', 'classifyError', 'friendlyError', 'normalizeSupaUrl', 'projectRefFromUrl', 'keyProblem', 'b64urlEncode', 'b64urlDecode',
     'valuesOf', 'firstRow', 'pick', 'SPOOL_FIELDS', 'TEMPLATE_FIELDS', 'MACHINE_FIELDS', 'SETTINGS_FIELDS', 'REMOTE', 'ICONS', 'APP_VERSION',
     'tsMicros', 'normalizeRow', 'attrList', 'AUTH_CODES', 'inputNum', 'plural', 'exportCsvJournal',
-    'passwordProblem', 'authErrorMessage', 'PASSWORD_MIN', 'weighProblem', 'isPieceCount', 'backupStatus',
+    'passwordProblem', 'authErrorMessage', 'PASSWORD_MIN', 'weighProblem', 'isPieceCount', 'backupStatus', 'ORDER_FIELDS', 'ORDER_STATUSES', 'orderDueIn', 'openOrders', 'orderTotal',
+    'pdfDocument', 'pdfChars', 'pdfWidth', 'pdfFit', 'pdfWrap', 'monthRange', 'shiftMonth', 'monthReport', 'reportKpis', 'reportTables', 'reportPdf',
+    'labelsPdf', 'LABEL_GRID', 'orderDeliveredAt', 'fmtPlainDate', 'MM', 'spoolIdFromLabel', 'orderFieldsProblem',
   ];
   vm.runInContext(`globalThis.__app = { ${names.join(', ')} };`, ctx);
   return ctx.__app;

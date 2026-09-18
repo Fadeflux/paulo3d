@@ -81,6 +81,33 @@ function settingsOf(V) {
 
 const valuesOf = (map) => (map ? [...map.values()] : []);
 
+/* ---------- commandes clients ---------- */
+const ORDER_STATUS = {
+  todo: { label: 'À faire', tone: 'warn' },
+  ready: { label: 'Prête', tone: 'ok' },
+  delivered: { label: 'Livrée', tone: 'off' },
+  cancelled: { label: 'Annulée', tone: 'off' },
+};
+const ORDER_STATUSES = Object.keys(ORDER_STATUS);
+// Jours avant la date promise (négatif = en retard), comptés en jours LOCAUX
+function orderDueIn(order, now = new Date()) {
+  const m = String((order && order.due_date) || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
+  if (!m) return null;
+  const due = new Date(+m[1], +m[2] - 1, +m[3]);
+  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  return Math.round((due - today) / 86400000);
+}
+const orderTotal = (o) => (o.unit_price === null || o.unit_price === undefined ? null : roundDb(toNum(o.unit_price) * toNum(o.quantity), 2));
+// À faire et prêtes, la plus urgente d'abord (sans date : en dernier)
+function openOrders(V, now = new Date()) {
+  return valuesOf(V.orders).filter((o) => o.status === 'todo' || o.status === 'ready').sort((a, b) => {
+    const da = orderDueIn(a, now);
+    const db = orderDueIn(b, now);
+    if (da === null || db === null) return (da === null) - (db === null) || String(a.created_at).localeCompare(String(b.created_at));
+    return da - db || String(a.created_at).localeCompare(String(b.created_at));
+  });
+}
+
 /* ---------- sauvegardes ---------- */
 // L'offre gratuite de Supabase ne garde aucune copie restaurable : l'appli rappelle chaque mois
 // de télécharger une sauvegarde complète (seulement s'il y a des données à perdre).
@@ -156,6 +183,22 @@ function isPieceCount(v) {
   return Number.isInteger(n) && n >= 1;
 }
 const PIECES_ERROR = 'Nombre entier de pièces (1, 2, 3…).';
+
+// Champs d'une commande : EXACTEMENT les limites de la table orders (sinon l'action serait acceptée
+// hors-ligne puis refusée par la base). partial : seuls les champs présents sont vérifiés (modification).
+const ORDER_MAX_QTY = 10000;
+function orderFieldsProblem(f, partial = false) {
+  const has = (k) => !partial || k in f;
+  const len = (v) => [...String(v ?? '')].length;
+  if (has('item_name') && !(len(String(f.item_name || '').trim()) >= 1 && len(String(f.item_name || '').trim()) <= 120)) return new OpError('P3D09', 'Indique la pièce commandée (120 caractères au plus).');
+  if (has('quantity') && !isPieceCount(f.quantity)) return new OpError('P3D09', `Quantité invalide : ${PIECES_ERROR}`);
+  if (has('quantity') && toNum(f.quantity) > ORDER_MAX_QTY) return new OpError('P3D09', `Une commande compte au plus ${fmtNum(ORDER_MAX_QTY)} pièces.`);
+  if (has('unit_price') && f.unit_price !== null && f.unit_price !== undefined && !(toNum(f.unit_price, -1) >= 0 && toNum(f.unit_price) < 1e8)) return new OpError('P3D09', 'Prix invalide.');
+  if ('customer' in f && len(f.customer) > 120) return new OpError('P3D09', 'Nom du client trop long (120 caractères au plus).');
+  if ('channel' in f && f.channel !== null && len(f.channel) > 40) return new OpError('P3D09', 'Canal de vente invalide.');
+  if ('note' in f && f.note !== null && len(f.note) > 1000) return new OpError('P3D09', 'Note trop longue (1 000 caractères au plus).');
+  return null;
+}
 
 // Exemple de poids restant affiché dans les champs vides (proportionné à la bobine)
 const weighExample = (spool) => Math.round(toNum(spool && spool.initial_weight_g, 1000) * 0.64);

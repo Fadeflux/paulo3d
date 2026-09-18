@@ -40,7 +40,7 @@ VIEWS.bobines = {
     list.sort((a, b) => (view !== 'archived' ? rank[a.status] - rank[b.status] : 0) || a.s.material.localeCompare(b.s.material, 'fr') || (a.s.color_name || '').localeCompare(b.s.color_name || '', 'fr') || toNum(a.s.remaining_weight_g) - toNum(b.s.remaining_weight_g));
 
     return html`
-      ${pageHeader('Bobines', `${fmtNum(active.length)} bobine${active.length > 1 ? 's' : ''} active${active.length > 1 ? 's' : ''}`, btn('Ajouter une bobine', { variant: 'primary', icon: 'Plus', action: 'spool-new' }))}
+      ${pageHeader('Bobines', plural(active.length, 'bobine active', 'bobines actives'), html`${active.length && canScan() ? btn('Scanner', { variant: 'ghost', icon: 'ScanLine', action: 'scan-label', title: 'Scanner l’étiquette QR d’une bobine' }) : ''}${active.length ? btn('Étiquettes', { variant: 'ghost', icon: 'QrCode', action: 'open-labels' }) : ''}${btn('Ajouter une bobine', { variant: 'primary', icon: 'Plus', action: 'spool-new' })}`)}
       <div class="mb-4 grid grid-cols-3 gap-2">
         <div class="card px-3 py-3"><div class="text-[11px] text-slate-500">Filament restant</div><div class="font-display text-lg font-bold tabular-nums text-slate-50 sm:text-xl">${fmtKg(totalG)}</div></div>
         <div class="card px-3 py-3"><div class="text-[11px] text-slate-500">Valeur restante</div><div class="font-display text-lg font-bold tabular-nums text-slate-50 sm:text-xl">${fmtEur(valueLeft)}</div></div>
@@ -138,6 +138,7 @@ Actions['spool-menu'] = (el) => {
       ${row('Pencil', 'Modifier', 'm-edit')}
       ${row('Copy', 'Racheter la même (dupliquer)', 'm-dup')}
       ${row('History', 'Historique de consommation', 'm-history')}
+      ${s.archived ? '' : row('QrCode', 'Imprimer son étiquette QR', 'm-label')}
       ${row(s.archived ? 'ArchiveRestore' : 'Archive', s.archived ? 'Désarchiver' : 'Archiver (bobine finie)', 'm-archive')}
       ${hasHistory ? '' : row('Trash2', 'Supprimer', 'm-delete', 'text-rose-300')}
     </div>`,
@@ -146,6 +147,11 @@ Actions['spool-menu'] = (el) => {
       'm-edit': (b, e, m) => { m.close(); openSpoolModal({ spool: s }); },
       'm-dup': (b, e, m) => { m.close(); openSpoolModal({ spool: s, duplicate: true }); },
       'm-history': (b, e, m) => { m.close(); openSpoolHistory(s); },
+      'm-label': (b, e, m) => {
+        m.close();
+        Labels.selected = null;
+        go(`#/etiquettes?ids=${s.id}`);
+      },
       'm-archive': async (b, e, m) => {
         m.close();
         await runOp('spool.patch', { id: s.id, fields: { archived: !s.archived } }, { success: s.archived ? 'Bobine réactivée' : 'Bobine archivée' });

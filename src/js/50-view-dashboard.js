@@ -113,6 +113,7 @@ VIEWS.dashboard = {
     return html`
       ${pageHeader('Tableau de bord', `${st.workshop_name} · ${range.label}`, segmented('period', PERIODS, period))}
       ${backupReminder(V)}
+      ${ordersCard(V)}
       ${fresh ? onboardingCard(V) : ''}
 
       <div class="grid gap-3 lg:grid-cols-3">
@@ -183,7 +184,7 @@ VIEWS.dashboard = {
             ${s.costs <= 0.004 ? html`<p class="text-[13px] text-slate-500">Aucun coût sur la période.</p>` : ''}</div>
         </div>
         <div class="card overflow-hidden lg:col-span-3">
-          <div class="flex items-center justify-between px-4 pt-4"><h2 class="text-sm font-semibold text-slate-100">Activité récente</h2><a href="#/historique" class="hit text-[13px] font-medium text-neon">Tout l'historique</a></div>
+          <div class="flex items-center justify-between px-4 pt-4"><h2 class="text-sm font-semibold text-slate-100">Activité récente</h2><span class="flex gap-4"><a href="#/bilan" class="hit text-[13px] font-medium text-slate-400 hover:text-slate-200">Bilan du mois</a><a href="#/historique" class="hit text-[13px] font-medium text-neon">Tout l'historique</a></span></div>
           ${recent.length ? html`<div class="mt-2 divide-y divide-white/[0.05]">${recent.map((e) => eventRow(V, e, { compact: true }))}</div>`
             : html`<p class="px-4 pb-5 pt-3 text-[13px] text-slate-500">Rien pour l'instant.</p>`}
         </div>
@@ -309,7 +310,7 @@ VIEWS.historique = {
     const days = groupBy(shown, (e) => dayKey(e.date));
     const types = [{ value: 'all', label: 'Tout' }, ...Object.entries(EVENT_META).map(([value, m]) => ({ value, label: m.label }))];
     return html`
-      ${pageHeader('Historique', `${fmtNum(events.length)} évènement${events.length > 1 ? 's' : ''}`, btn('Exporter', { icon: 'Download', action: 'export-open' }))}
+      ${pageHeader('Historique', `${fmtNum(events.length)} évènement${events.length > 1 ? 's' : ''}`, html`${btn('Bilan du mois', { variant: 'ghost', icon: 'FileText', action: 'open-bilan' })}${btn('Exporter', { icon: 'Download', action: 'export-open' })}`)}
       <div class="mb-4 flex flex-col gap-3">
         <div class="flex flex-wrap items-center gap-2">
           ${segmented('histPeriod', PERIODS, period)}
@@ -385,6 +386,7 @@ Actions['export-open'] = () => {
     size: 'sm',
     render: () => html`<div class="space-y-2">
       ${opt('FileJson', 'Sauvegarde complète (JSON)', 'Toutes les tables, à garder précieusement', 'x-json')}
+      ${opt('FileText', 'Bilan du mois (PDF)', 'Chiffres clés, ventes, productions : à imprimer', 'x-bilan')}
       ${opt('FileSpreadsheet', 'Journal de l’atelier (CSV)', 'Tous les évènements, du plus ancien au plus récent', 'x-journal')}
       ${opt('ShoppingBag', 'Ventes détaillées (CSV)', 'Encaissé, coût de revient, frais, marge nette', 'x-sales')}
       ${opt('Printer', 'Productions et prints ratés (CSV)', 'Coûts figés, grammes, temps machine', 'x-prod')}
@@ -393,6 +395,7 @@ Actions['export-open'] = () => {
     </div>`,
     actions: {
       'x-json': () => downloadBackup(),
+      'x-bilan': (el, e, m) => { m.close(); go('#/bilan'); },
       'x-journal': () => saveFile(`paulo3d-journal-${stampDay}.csv`, exportCsvJournal(Store.V), 'text/csv;charset=utf-8'),
       'x-sales': () => saveFile(`paulo3d-ventes-${stampDay}.csv`, exportCsvSales(Store.V), 'text/csv;charset=utf-8'),
       'x-prod': () => saveFile(`paulo3d-productions-${stampDay}.csv`, exportCsvProductions(Store.V), 'text/csv;charset=utf-8'),

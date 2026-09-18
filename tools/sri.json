@@ -2,5 +2,6 @@
   "https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js": "sha384-JBR+x8blGwjDRO63aHCGiZMD4VNiTR4ZUGA+N6ZKLf3zNt1fK8IBpcgPaMrxqWBp",
   "https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js": "sha384-jb8JQMbMoBUzgWatfe6COACi2ljcDdZQ2OxczGA3bGNeWe+6DChMTBJemed7ZnvJ",
   "https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js": "sha384-DdGlNq+wVXAn83gXqwyeFHB7iyXy6L0rLrNzgDmhKWPjiJLg9vj6qosYmZmkMfQ+",
-  "https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js": "sha384-e9EFD6BGC90bkW9aDV5xbbBfzwN7G8YImHao2lfLVKV/hPB0E0go+H3I64h7oHtA"
+  "https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js": "sha384-e9EFD6BGC90bkW9aDV5xbbBfzwN7G8YImHao2lfLVKV/hPB0E0go+H3I64h7oHtA",
+  "https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js": "sha384-b5Ya4Bq3qCyz39m2ISh+4DxjAIljdeFwK/BsXLuj9gugaNwAcj/ia15fxNZL9Nlx"
 }
