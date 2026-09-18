@@ -128,6 +128,33 @@ test('print raté à 50 % : filament au prorata, ni stock ni main-d’œuvre', (
   assert.equal(S.spools.get(f.S1).remaining_weight_g, 983.12);
 });
 
+test('pesée : jamais plus de 5 % au-dessus du poids initial (bobine vide oubliée)', () => {
+  const f = fixture();
+  const weigh = (g) => ['spool.weigh', { id: app.uuid(), spool_id: f.S1, measured_g: g, occurred_at: '2026-09-01T08:00:00Z' }];
+  assert.equal(applyOps(app, [...f.ops, weigh(1050)]).spools.get(f.S1).remaining_weight_g, 1050, 'léger surplus du fabricant accepté');
+  assert.throws(() => applyOps(app, [...f.ops, weigh(1050.01)]), /bobine vide/);
+  assert.throws(() => applyOps(app, [...f.ops, weigh(1230)]), /1,23 kg.*\(1,00 kg\)/, 'les deux poids sont indiqués');
+  const spool = { initial_weight_g: 500 };
+  assert.equal(app.weighProblem(spool, 525), null);
+  assert.match(app.weighProblem(spool, 700), /bobine vide/);
+  assert.equal(app.weighProblem({ initial_weight_g: 0 }, 700), null, 'poids initial inconnu : rien à comparer');
+});
+
+test('nombre de pièces : entier exigé, jamais arrondi en silence (1,5 pièce refusé)', () => {
+  assert.equal(app.isPieceCount(2), true);
+  assert.equal(app.isPieceCount('3'), true);
+  for (const bad of [1.5, 0.6, 0, -1, NaN, null, '', 'abc']) assert.equal(app.isPieceCount(bad), false, String(bad));
+  const f = fixture();
+  const add = (q) => ['stock.add', { id: app.uuid(), template_id: f.T, item_name: 'Support', unit_cost: 2, quantity: q, occurred_at: '2026-09-01T08:00:00Z' }];
+  assert.equal(applyOps(app, [...f.ops, add(2)]).production_stock.size, 1);
+  assert.throws(() => applyOps(app, [...f.ops, add(1.5)]), /Nombre entier de pièces/);
+  const sale = { id: app.uuid(), channel: 'direct', occurred_at: '2026-09-02T08:00:00Z', items: [{ id: app.uuid(), template_id: f.T, item_name: 'Support', quantity: 1.5, unit_price: 10, from_stock: false, unit_cost: 2 }] };
+  assert.throws(() => applyOps(app, [...f.ops, ['sale.record', sale]]), /Nombre entier de pièces/);
+  const V = view(applyOps(app, f.ops));
+  const { payload } = app.planProduction(V, { template: V.templates.get(f.T), quantity: 2, occurredAt: '2026-09-02T08:00:00Z' });
+  assert.throws(() => applyOps(app, [...f.ops, ['production.launch', { ...payload, quantity: 2.5 }]]), /Nombre entier de pièces/);
+});
+
 test('bobine insuffisante : avertissement, mais enregistrement possible', () => {
   const f = fixture();
   const S0 = applyOps(app, [...f.ops, ['spool.weigh', { id: app.uuid(), spool_id: f.S1, measured_g: 50, occurred_at: '2026-09-01T08:00:00Z' }]]);
@@ -548,6 +575,16 @@ test('connexion : messages de Supabase traduits, aucune inscription possible dep
   assert.match(m('Request rate limit reached', 'over_request_rate_limit'), /Trop de tentatives/);
   const code = fs.readFileSync(path.join(ROOT, '.dev', 'app.js'), 'utf8');
   assert.ok(!/\.signUp\s*\(/.test(code), 'aucun appel de création de compte dans l’appli');
+});
+
+test('boutons à choix (puces, couleurs) : le choix actif est annoncé aux lecteurs d’écran', () => {
+  const code = fs.readFileSync(path.join(ROOT, '.dev', 'app.js'), 'utf8');
+  const chips = [...code.matchAll(/<button[^>]*class="chip \$\{[^>]*>/g)].map((m) => m[0]);
+  assert.ok(chips.length >= 7, `puces trouvées : ${chips.length}`);
+  for (const t of chips) assert.match(t, /aria-pressed="\$\{/, t.slice(0, 140));
+  const swatches = [...code.matchAll(/<button[^>]*data-action="preset"[^>]*>/g)].map((m) => m[0]);
+  assert.ok(swatches.length >= 1);
+  for (const t of swatches) assert.match(t, /aria-pressed="\$\{/, t.slice(0, 140));
 });
 
 test('icônes : toutes celles demandées sont présentes dans le build', () => {

@@ -547,6 +547,21 @@ test('connecté mais sans identité : action refusée proprement', async () => {
   assert.equal(code, 'P3D00');
 });
 
+test('pesée : refusée au-delà de 5 % au-dessus du poids initial (même règle que l’appli)', async () => {
+  await asUser(admin, A, async (c) => {
+    const sp = (await one(c, "insert into public.spools (brand, material, color_name, color_hex, price, initial_weight_g) values ('Essai', 'PETG', 'Ivoire', '#D6C3A1', 12.5, 500) returning id")).id;
+    await c.query('savepoint avant');
+    const code = await pgCode(rpc(c, 'p3d_weigh_spool', { id: randomUUID(), spool_id: sp, measured_g: 700 }));
+    assert.equal(code, 'P3D09');
+    await c.query('rollback to savepoint avant');
+    const ok = await rpc(c, 'p3d_weigh_spool', { id: randomUUID(), spool_id: sp, measured_g: 525 });
+    assert.equal(num(ok.spools[0].remaining_weight_g), 525);
+    await c.query('savepoint encore');
+    assert.equal(await pgCode(rpc(c, 'p3d_weigh_spool', { id: randomUUID(), spool_id: sp, measured_g: 525.01 })), 'P3D09');
+    await c.query('rollback to savepoint encore');
+  });
+});
+
 test('Security Advisor : aucune fonction « security definer » appelable par l’API, rien d’ouvert sans compte', async () => {
   // les droits que Supabase donne par défaut à tout nouvel objet (imités dans supabase-stubs.sql) sont refermés
   const defs = (await admin.query(`

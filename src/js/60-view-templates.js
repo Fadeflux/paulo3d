@@ -510,7 +510,8 @@ function openTemplateModal({ template = null, duplicate = false }) {
       'import-apply': (el, e, m) => {
         const res = d.imp.result;
         if (!res) return;
-        const pieces = Math.max(1, Math.round(toNum(d.imp.pieces, 1)));
+        if (d.imp.pieces !== null && d.imp.pieces !== undefined && d.imp.pieces !== '' && !isPieceCount(d.imp.pieces)) return setFieldError(m.el, 'import_pieces', PIECES_ERROR);
+        const pieces = Math.max(1, toNum(d.imp.pieces, 1));
         const vals = importToTemplate(Store.V, res, { pieces, plateIndex: d.imp.plate || undefined });
         if (!String(d.t.name || '').trim() && vals.name) d.t.name = vals.name;
         if (vals.materials.length) d.t.materials = vals.materials;
@@ -537,6 +538,7 @@ function openTemplateModal({ template = null, duplicate = false }) {
           const v = t0[k];
           if (v !== null && v !== undefined && (!Number.isFinite(v) || v < 0)) { setFieldError(m.el, k, 'Valeur invalide.'); bad = true; }
         }
+        if (t0.pieces_per_print !== null && t0.pieces_per_print !== undefined && t0.pieces_per_print !== '' && !isPieceCount(t0.pieces_per_print)) { setFieldError(m.el, 'pieces_per_print', PIECES_ERROR); bad = true; }
         if (t0.pricing_mode === 'margin' && Number.isFinite(t0.target_margin_pct) && t0.target_margin_pct >= 100) { setFieldError(m.el, 'target_margin_pct', 'Doit être inférieure à 100 %.'); bad = true; }
         if (t0.pricing_mode === 'coef' && t0.price_coef !== null && !(t0.price_coef > 0)) { setFieldError(m.el, 'price_coef', 'Doit être supérieur à 0.'); bad = true; }
         if (bad) return;
@@ -545,7 +547,7 @@ function openTemplateModal({ template = null, duplicate = false }) {
           name: String(t0.name).trim().slice(0, 120),
           description: String(t0.description || '').trim() || null,
           machine_id: t0.machine_id || null,
-          pieces_per_print: Math.max(1, Math.round(toNum(t0.pieces_per_print, 1))),
+          pieces_per_print: Math.max(1, toNum(t0.pieces_per_print, 1)),
           materials: lines.filter((l) => toNum(l.grams) > 0).map((l) => ({
             material: String(l.material || 'PLA').trim().slice(0, 40) || 'PLA',
             color_name: String(l.color_name || '').trim().slice(0, 60),

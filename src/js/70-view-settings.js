@@ -99,9 +99,9 @@ VIEWS.parametres = {
 
           ${settingsSection('s-channels', 'Store', 'Canaux de vente', 'Commission retirée automatiquement de la marge nette', html`
             <div class="space-y-2" id="channels-list">${(App.ui.channelsDraft || st.sales_channels).map((c, i) => html`<div class="grid grid-cols-[1fr_5.5rem_5.5rem_2.5rem] items-end gap-2">
-              ${field(i === 0 ? 'Nom' : '', inputText('ch_name', c.name, { maxlength: 40, attrs: { 'data-ch': i } }))}
-              ${field(i === 0 ? '%' : '', inputNum('ch_pct', c.pct, { suffix: '%', attrs: { 'data-ch': i } }))}
-              ${field(i === 0 ? 'Fixe' : '', inputNum('ch_fixed', c.fixed, { suffix: '€', attrs: { 'data-ch': i } }))}
+              ${field(i === 0 ? 'Nom' : '', inputText('ch_name', c.name, { maxlength: 40, attrs: { 'data-ch': i, 'aria-label': `Nom du canal ${i + 1}` } }))}
+              ${field(i === 0 ? '%' : '', inputNum('ch_pct', c.pct, { suffix: '%', attrs: { 'data-ch': i, 'aria-label': `Commission en % · ${c.name || `canal ${i + 1}`}` } }))}
+              ${field(i === 0 ? 'Fixe' : '', inputNum('ch_fixed', c.fixed, { suffix: '€', attrs: { 'data-ch': i, 'aria-label': `Frais fixes en € · ${c.name || `canal ${i + 1}`}` } }))}
               ${btn('', { size: 'icon', variant: 'ghost', icon: 'X', action: 'channel-remove', attrs: { 'data-ch': i }, title: 'Retirer ce canal' })}
             </div>`)}</div>
             <p class="text-[12px] text-slate-500">Renseigne les frais réels de chaque plateforme (ils changent régulièrement). 0 = aucune commission.</p>`,

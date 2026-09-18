@@ -801,6 +801,11 @@ begin
     if public.p3d_is_deleted('spools', v_spool) then
       return jsonb_build_object('tombstoned', true);
     end if;
+    -- plus de 5 % au-dessus du poids initial : bobine vide oubliée (même règle que weighProblem() de l'appli)
+    if (p ->> 'measured_g')::numeric > (select round(s.initial_weight_g * 1.05, 2) from public.spools s where s.id = v_spool) then
+      raise exception using errcode = 'P3D09',
+        message = 'Poids pesé supérieur au poids initial de la bobine : as-tu retiré le poids de la bobine vide ? Sinon, corrige le poids initial de la bobine.';
+    end if;
     insert into public.spool_movements (id, spool_id, kind, measured_g, note, occurred_at)
     values (v_id, v_spool, 'weigh', (p ->> 'measured_g')::numeric, nullif(p ->> 'note', ''),
             coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))

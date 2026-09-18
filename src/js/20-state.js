@@ -153,6 +153,8 @@ const OPS = {
     validate(V, p) {
       if (!V.spools.has(p.spool_id)) return new OpError('23503', 'Bobine introuvable.');
       if (!(toNum(p.measured_g, -1) >= 0)) return new OpError('P3D09', 'Poids mesuré invalide.');
+      const tooHeavy = weighProblem(V.spools.get(p.spool_id), p.measured_g);
+      if (tooHeavy) return new OpError('P3D09', tooHeavy);
       return null;
     },
     apply(V, p, ctx) {
@@ -213,7 +215,7 @@ const OPS = {
     keys: (p) => [`productions:${p.id}`, ...(p.lot_id ? [`production_stock:${p.lot_id}`] : []), ...(p.consumption || []).filter((c) => c.spool_id).map((c) => `spools:${c.spool_id}`)],
     done: (S, p) => S.productions.has(p.id),
     validate(V, p) {
-      if (!(Math.round(toNum(p.quantity)) >= 1)) return new OpError('P3D09', 'Quantité invalide.');
+      if (!isPieceCount(p.quantity)) return new OpError('P3D09', `Quantité invalide : ${PIECES_ERROR}`);
       for (const c of p.consumption || []) {
         if (c.spool_id && !V.spools.has(c.spool_id)) return new OpError('23503', 'Une des bobines choisies a été supprimée.');
         if (toNum(c.grams) < 0) return new OpError('P3D09', 'Consommation négative refusée.');
@@ -277,7 +279,7 @@ const OPS = {
     keys: (p) => [`production_stock:${p.id}`],
     done: (S, p) => S.production_stock.has(p.id),
     validate(V, p) {
-      if (!(Math.round(toNum(p.quantity)) >= 1)) return new OpError('P3D09', 'Quantité invalide.');
+      if (!isPieceCount(p.quantity)) return new OpError('P3D09', `Quantité invalide : ${PIECES_ERROR}`);
       if (!String(p.item_name || '').trim()) return new OpError('P3D09', 'Nom de pièce manquant.');
       return null;
     },
@@ -296,7 +298,7 @@ const OPS = {
     keys: () => [],
     done: (S, p) => valuesOf(S.stock_adjustments).some((a) => a.group_id === p.id),
     validate(V, p) {
-      if (!(Math.round(toNum(p.quantity)) >= 1)) return new OpError('P3D09', 'Quantité à retirer invalide.');
+      if (!isPieceCount(p.quantity)) return new OpError('P3D09', `Quantité à retirer invalide : ${PIECES_ERROR}`);
       const [r] = simulateFifo(V, [{ template_id: p.template_id, item_name: p.item_name, quantity: p.quantity }]);
       if (r.shortage > 0) return new OpError('P3D01', `Stock insuffisant pour « ${p.item_name} » : il manque ${plural(r.shortage, 'pièce', 'pièces')}.`);
       return null;
@@ -321,7 +323,7 @@ const OPS = {
     validate(V, p) {
       if (!Array.isArray(p.items) || !p.items.length) return new OpError('P3D09', 'Une vente doit contenir au moins un article.');
       for (const i of p.items) {
-        if (!(Math.round(toNum(i.quantity)) >= 1)) return new OpError('P3D09', 'Quantité invalide.');
+        if (!isPieceCount(i.quantity)) return new OpError('P3D09', `Quantité invalide pour « ${String(i.item_name || '').trim()} » : ${PIECES_ERROR}`);
         if (toNum(i.unit_price) < 0) return new OpError('P3D09', 'Prix invalide.');
       }
       const reqs = p.items.filter((i) => i.from_stock !== false);

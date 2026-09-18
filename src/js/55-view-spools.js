@@ -19,15 +19,17 @@ VIEWS.bobines = {
   render(V) {
     const st = settingsOf(V);
     const view = App.ui.spoolView || 'active';
-    const mat = App.ui.spoolMat || 'all';
     const q = normalizeText(App.ui.spoolQ || '');
     const all = valuesOf(V.spools);
+    const materials = [...new Set(all.map((s) => s.material))].sort((a, b) => a.localeCompare(b, 'fr'));
+    // filtre mémorisé sur une matière qui n'existe plus (bobines supprimées) : ignoré, sinon la liste
+    // resterait vide sans bouton pour l'enlever (les boutons de matière sont masqués s'il n'en reste qu'une)
+    const mat = materials.includes(App.ui.spoolMat) ? App.ui.spoolMat : 'all';
     const active = all.filter((s) => !s.archived);
     const withStatus = (s) => ({ s, status: spoolStatus(s, st) });
     const alerts = active.map(withStatus).filter((x) => x.status !== 'ok');
     const totalG = sum(active, (s) => Math.max(0, toNum(s.remaining_weight_g)));
     const valueLeft = sum(active, (s) => Math.max(0, toNum(s.remaining_weight_g)) * spoolCpg(s));
-    const materials = [...new Set(all.map((s) => s.material))].sort((a, b) => a.localeCompare(b, 'fr'));
 
     let list = (view === 'archived' ? all.filter((s) => s.archived) : active).map(withStatus);
     if (view === 'alert') list = list.filter((x) => x.status !== 'ok');
@@ -53,8 +55,8 @@ VIEWS.bobines = {
           </div>
         </div>
         ${materials.length > 1 ? html`<div class="no-scrollbar -mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 lg:mx-0 lg:flex-wrap lg:px-0">
-          <button data-action="spool-mat" data-value="all" class="chip ${mat === 'all' ? 'chip-active' : ''}">Toutes matières</button>
-          ${materials.map((m) => html`<button data-action="spool-mat" data-value="${m}" class="chip ${mat === m ? 'chip-active' : ''}">${m}</button>`)}
+          <button data-action="spool-mat" data-value="all" aria-pressed="${mat === 'all'}" class="chip ${mat === 'all' ? 'chip-active' : ''}">Toutes matières</button>
+          ${materials.map((m) => html`<button data-action="spool-mat" data-value="${m}" aria-pressed="${mat === m}" class="chip ${mat === m ? 'chip-active' : ''}">${m}</button>`)}
         </div>` : ''}
       </div>
       ${list.length ? html`<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">${list.map(({ s, status }) => spoolCard(V, s, status))}</div>`
@@ -196,7 +198,7 @@ function openSpoolModal({ spool = null, duplicate = false }) {
             </label>
             ${inputText('color_name', d.s.color_name, { placeholder: 'Nom de la couleur (ex. Noir mat)', maxlength: 60, cls: 'flex-1', attrs: { autofocus: true } })}
           </div>
-          <div class="mt-2 flex flex-wrap gap-1.5">${COLOR_PRESETS.map(([n, h]) => html`<button type="button" data-action="preset" data-name="${n}" data-hex="${h}" class="h-7 w-7 rounded-full border border-white/15 transition hover:scale-110 ${safeHex(d.s.color_hex) === h ? 'ring-2 ring-neon ring-offset-2 ring-offset-ink-900' : ''}" style="background:${h}" title="${n}" aria-label="${n}"></button>`)}</div>
+          <div class="mt-2 flex flex-wrap gap-1.5">${COLOR_PRESETS.map(([n, h]) => html`<button type="button" data-action="preset" data-name="${n}" data-hex="${h}" aria-pressed="${safeHex(d.s.color_hex) === h}" class="h-7 w-7 rounded-full border border-white/15 transition hover:scale-110 ${safeHex(d.s.color_hex) === h ? 'ring-2 ring-neon ring-offset-2 ring-offset-ink-900' : ''}" style="background:${h}" title="${n}" aria-label="${n}"></button>`)}</div>
         </div>
         <div class="grid grid-cols-2 gap-3">
           ${field('Marque', html`${inputText('brand', d.s.brand, { placeholder: 'Bambu Lab', maxlength: 80, attrs: { list: 'brand-list' } })}<datalist id="brand-list">${knownBrands.map((b) => html`<option value="${b}"></option>`)}</datalist>`)}
@@ -206,11 +208,11 @@ function openSpoolModal({ spool = null, duplicate = false }) {
           ${field("Prix d'achat", inputNum('price', d.s.price, { suffix: '€', placeholder: '22,00' }))}
           ${field('Poids initial (net)', inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }))}
         </div>
-        <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
+        <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
         ${editing ? '' : html`<div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
           <label class="flex items-center justify-between gap-3"><span class="text-sm text-slate-200">Bobine déjà entamée</span>
             <input type="checkbox" name="started" class="toggle" ${d.started ? raw('checked') : ''}/></label>
-          ${d.started ? html`<div class="mt-3">${field('Poids restant aujourd’hui (net, sans la bobine vide)', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: '640', inputmode: 'numeric' }))}</div>` : ''}
+          ${d.started ? html`<div class="mt-3">${field('Poids restant aujourd’hui (net, sans la bobine vide)', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: String(weighExample(d.s)), inputmode: 'numeric' }))}</div>` : ''}
         </div>`}
         <details class="group rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.s.tare_g || d.s.notes ? raw('open') : ''}>
           <summary class="flex cursor-pointer list-none items-center justify-between text-sm text-slate-300">Plus de détails<span class="transition group-open:rotate-180">${icon('ChevronDown', 'w-4 h-4')}</span></summary>
@@ -263,6 +265,7 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         if (d.s.tare_g !== null && (!Number.isFinite(d.s.tare_g) || d.s.tare_g < 0)) { setFieldError(m.el, 'tare_g', 'Tare invalide.'); bad = true; }
         const remaining = d.started ? parseNum(readForm(m.el).remainingNow) : null;
         if (d.started && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', 'Indique le poids restant.'); bad = true; }
+        else if (d.started && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
         if (bad) return;
         d.busy = true;
         const payload = {
@@ -297,11 +300,14 @@ function openWeighModal(spool) {
     const before = toNum(s.remaining_weight_g);
     const after = netValue();
     const ok = Number.isFinite(after) && after >= 0;
+    const tooHeavy = ok && weighProblem(s, after);
     return html`<div class="grid grid-cols-3 items-center gap-2 rounded-2xl border border-white/[0.06] bg-ink-850 p-4 text-center">
       <div><div class="text-[11px] text-slate-500">Selon l'appli</div><div class="font-display text-xl font-bold tabular-nums text-slate-300">${fmtG(before)}</div></div>
       <div class="text-slate-600">${icon('ArrowRight', 'w-5 h-5 mx-auto')}</div>
-      <div><div class="text-[11px] text-slate-500">Pesée</div><div class="font-display text-xl font-bold tabular-nums ${ok ? 'text-neon' : 'text-slate-600'}">${ok ? fmtG(after) : '—'}</div></div>
-      ${ok ? html`<div class="col-span-3 text-[12px] ${Math.abs(after - before) < 5 ? 'text-slate-500' : 'text-amber-300'}">${Math.abs(after - before) < 0.5 ? 'Identique.' : `Écart de ${fmtG(after - before)} ${after < before ? '(consommation non saisie ?)' : ''}`}</div>` : ''}
+      <div><div class="text-[11px] text-slate-500">Pesée</div><div class="font-display text-xl font-bold tabular-nums ${tooHeavy ? 'text-rose-300' : ok ? 'text-neon' : 'text-slate-600'}">${ok ? fmtG(after) : '—'}</div></div>
+      ${tooHeavy
+        ? html`<div class="col-span-3 text-[12px] text-rose-300">Plus que le poids initial (${fmtG(s.initial_weight_g)}) : bobine vide oubliée ?</div>`
+        : ok ? html`<div class="col-span-3 text-[12px] ${Math.abs(after - before) < 5 ? 'text-slate-500' : 'text-amber-300'}">${Math.abs(after - before) < 0.5 ? 'Identique.' : `Écart de ${fmtG(after - before)} ${after < before ? '(consommation non saisie ?)' : ''}`}</div>` : ''}
     </div>`;
   };
   Modal.open({
@@ -312,9 +318,9 @@ function openWeighModal(spool) {
       body: html`<div class="space-y-4">
         ${segmented('mode', [{ value: 'gross', label: 'Sur la balance' }, { value: 'net', label: 'Poids net connu' }], d.mode, { action: 'mode', cls: 'w-full [&>button]:flex-1' })}
         ${d.mode === 'gross'
-          ? html`${field('Poids affiché par la balance', inputNum('gross', d.gross, { suffix: 'g', placeholder: '890', inputmode: 'numeric', attrs: { autofocus: true } }))}
+          ? html`${field('Poids affiché par la balance', inputNum('gross', d.gross, { suffix: 'g', placeholder: String(weighExample(spool) + Math.round(toNum(d.tare, 250))), inputmode: 'numeric', attrs: { autofocus: true } }))}
              ${field('Poids de la bobine vide', inputNum('tare', d.tare, { suffix: 'g', placeholder: '250', inputmode: 'numeric' }), { hint: d.tare ? 'Retenu pour la prochaine pesée.' : 'Indique-le une fois : il sera retenu pour cette bobine.' })}`
-          : field('Filament restant (sans la bobine vide)', inputNum('net', d.net, { suffix: 'g', placeholder: '640', inputmode: 'numeric', attrs: { autofocus: true } }))}
+          : field('Filament restant (sans la bobine vide)', inputNum('net', d.net, { suffix: 'g', placeholder: String(weighExample(spool)), inputmode: 'numeric', attrs: { autofocus: true } }))}
         <div id="weigh-preview">${preview()}</div>
         <p class="text-[12px] text-slate-500">La pesée fait foi : les consommations saisies avant elle ne comptent plus, celles d'après sont déduites.</p>
       </div>`,
@@ -337,6 +343,8 @@ function openWeighModal(spool) {
         const net = netValue();
         if (d.mode === 'gross' && (!Number.isFinite(d.tare) || d.tare < 0)) return setFieldError(m.el, 'tare', 'Indique le poids de la bobine vide.');
         if (!Number.isFinite(net) || net < 0) return setFieldError(m.el, d.mode === 'gross' ? 'gross' : 'net', d.mode === 'gross' && Number.isFinite(d.gross) ? 'Le poids est inférieur à la bobine vide.' : 'Indique un poids.');
+        const tooHeavy = weighProblem(Store.V.spools.get(spool.id) || spool, net);
+        if (tooHeavy) return setFieldError(m.el, d.mode === 'gross' ? 'gross' : 'net', tooHeavy);
         d.busy = true;
         const res = await runOp('spool.weigh', { id: uuid(), spool_id: spool.id, measured_g: roundDb(net, 2), occurred_at: new Date().toISOString() }, { success: `Pesée enregistrée : ${fmtG(net)}` });
         if (opAccepted(res) && d.mode === 'gross' && roundDb(d.tare, 2) !== toNum(spool.tare_g, -1)) {

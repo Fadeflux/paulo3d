@@ -15,7 +15,7 @@ VIEWS.stock = {
     const actions = html`${btn('Production', { variant: 'primary', icon: 'Printer', action: 'st-production' })}${btn('Vente', { icon: 'ShoppingBag', action: 'st-sale' })}${btn('Print raté', { variant: 'ghost', icon: 'Flame', action: 'st-failure' })}`;
     return html`
       ${pageHeader('Stock & Ventes', 'Pièces prêtes à la vente, ventes et productions', actions)}
-      <div class="mb-4 overflow-x-auto">${segmented('stockTab', STOCK_TABS, tab)}</div>
+      <div class="no-scrollbar mb-4 flex overflow-x-auto overflow-y-hidden">${segmented('stockTab', STOCK_TABS, tab)}</div>
       ${tab === 'ventes' ? salesTab(V) : tab === 'productions' ? productionsTab(V) : piecesTab(V)}`;
   },
   mount(V, route) {
@@ -207,7 +207,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
   const plan = () => planProduction(Store.V, {
     template: currentTemplate(),
     kind: d.kind,
-    quantity: d.quantity,
+    quantity: isPieceCount(d.quantity) ? toNum(d.quantity) : Math.max(1, Math.round(toNum(d.quantity, 1))),
     failedPct: d.failedPct,
     machineId: d.machineId || null,
     spoolIds: d.spoolIds,
@@ -291,7 +291,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
                 ${btn('', { size: 'icon', icon: 'Minus', action: 'qty-minus', title: 'Moins' })}
                 ${inputNum('quantity', d.quantity, { placeholder: '1', inputmode: 'numeric', cls: 'w-24 [&_input]:text-center [&_input]:font-display [&_input]:text-lg' })}
                 ${btn('', { size: 'icon', icon: 'Plus', action: 'qty-plus', title: 'Plus' })}
-                ${toNum(t.pieces_per_print) > 1 && !isFail ? html`<span class="text-[12px] text-slate-500">${fmtNum(toNum(d.quantity) / toNum(t.pieces_per_print), 1)} plateau(x)</span>` : ''}
+                ${toNum(t.pieces_per_print) > 1 && !isFail ? html`<span class="text-[12px] text-slate-500">${plural(Math.ceil(toNum(d.quantity) / toNum(t.pieces_per_print)), 'plateau', 'plateaux')}</span>` : ''}
               </div>
             </div>
             ${isFail ? html`<div>
@@ -299,7 +299,7 @@ function openProductionModal({ kind = 'production', templateId = null }) {
               <input type="range" name="failedPct" min="5" max="100" step="5" value="${d.failedPct}" class="range w-full"/>
               <p class="mt-1 text-[12px] text-slate-500">Seule la part imprimée est déduite (filament et temps machine).</p>
             </div>
-            <div><span class="label">Cause</span><div class="flex flex-wrap gap-1.5">${FAILURE_REASONS.map((r) => html`<button data-action="reason" data-value="${r}" class="chip ${d.reason === r ? 'chip-active' : ''}">${r}</button>`)}</div></div>` : ''}
+            <div><span class="label">Cause</span><div class="flex flex-wrap gap-1.5">${FAILURE_REASONS.map((r) => html`<button data-action="reason" data-value="${r}" aria-pressed="${d.reason === r}" class="chip ${d.reason === r ? 'chip-active' : ''}">${r}</button>`)}</div></div>` : ''}
             ${field('Machine', selectInput('machineId', machineOptions(V, d.machineId), d.machineId))}
             <details class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.showMore ? raw('open') : ''}>
               <summary class="cursor-pointer list-none text-sm text-slate-300">Date et note <span class="text-slate-500">· ${fmtDate(fromLocalInput(d.occurredAt), 'long')}</span></summary>
@@ -331,8 +331,8 @@ function openProductionModal({ kind = 'production', templateId = null }) {
         return;
       }
       if (name === 'quantity') {
-        const q = parseNum(el.value);
-        d.quantity = Number.isFinite(q) ? Math.max(1, Math.round(q)) : 1;
+        d.quantity = parseNum(el.value);
+        setFieldError(m.el, 'quantity', el.value.trim() && !isPieceCount(d.quantity) ? PIECES_ERROR : '');
       } else if (name === 'failedPct') {
         d.failedPct = +el.value;
         const lbl = m.q('#pct-label');
@@ -371,8 +371,8 @@ function openProductionModal({ kind = 'production', templateId = null }) {
       },
       submit: async (el, e, m) => {
         if (d.busy) return;
-        const q = Math.round(toNum(d.quantity, 0));
-        if (!(q >= 1)) return setFieldError(m.el, 'quantity', 'Au moins 1 pièce.');
+        if (!isPieceCount(d.quantity)) return setFieldError(m.el, 'quantity', PIECES_ERROR);
+        const q = toNum(d.quantity);
         d.busy = true;
         el.disabled = true;
         const { payload } = plan();
@@ -507,7 +507,7 @@ function openSaleModal({ templateId = null, itemName = null }) {
         body: html`<div class="grid gap-5 lg:grid-cols-2">
           <div class="space-y-4">
             <div><h3 class="section-title mb-2">Articles</h3><div id="sale-items">${itemsBlock()}</div></div>
-            <div><span class="label">Canal de vente</span><div class="flex flex-wrap gap-1.5">${st.sales_channels.map((c) => html`<button data-action="channel" data-value="${c.id}" class="chip ${d.channel === c.id ? 'chip-active' : ''}">${c.name}${toNum(c.pct) > 0 || toNum(c.fixed) > 0 ? html`<span class="text-slate-500"> · ${toNum(c.pct) > 0 ? `${fmtNum(c.pct, 1)} %` : ''}${toNum(c.pct) > 0 && toNum(c.fixed) > 0 ? ' + ' : ''}${toNum(c.fixed) > 0 ? fmtEur(c.fixed) : ''}</span>` : ''}</button>`)}</div></div>
+            <div><span class="label">Canal de vente</span><div class="flex flex-wrap gap-1.5">${st.sales_channels.map((c) => html`<button data-action="channel" data-value="${c.id}" aria-pressed="${d.channel === c.id}" class="chip ${d.channel === c.id ? 'chip-active' : ''}">${c.name}${toNum(c.pct) > 0 || toNum(c.fixed) > 0 ? html`<span class="text-slate-500"> · ${toNum(c.pct) > 0 ? `${fmtNum(c.pct, 1)} %` : ''}${toNum(c.pct) > 0 && toNum(c.fixed) > 0 ? ' + ' : ''}${toNum(c.fixed) > 0 ? fmtEur(c.fixed) : ''}</span>` : ''}</button>`)}</div></div>
             <div class="grid grid-cols-2 gap-3">
               ${field('Port payé par toi', inputNum('shipping_cost', d.shipping_cost, { suffix: '€', placeholder: '0,00' }))}
               ${field('Carton / emballage', inputNum('packaging_cost', d.packaging_cost, { suffix: '€', placeholder: '0,00' }))}
@@ -607,7 +607,7 @@ function openSaleModal({ templateId = null, itemName = null }) {
         const items = d.items.filter((it) => String(it.item_name || '').trim());
         if (!items.length) return toast('Choisis au moins une pièce à vendre.', { tone: 'bad' });
         for (const it of items) {
-          if (!(Math.round(toNum(it.quantity)) >= 1)) return toast(`Quantité invalide pour « ${it.item_name} ».`, { tone: 'bad' });
+          if (!isPieceCount(it.quantity)) return toast(`Quantité invalide pour « ${it.item_name} » : ${PIECES_ERROR}`, { tone: 'bad' });
           if (!Number.isFinite(it.unit_price) || it.unit_price < 0) return toast(`Indique le prix encaissé pour « ${it.item_name} ».`, { tone: 'bad' });
           if (!it.from_stock && it.unit_cost !== null && (!Number.isFinite(it.unit_cost) || it.unit_cost < 0)) return toast('Coût unitaire invalide.', { tone: 'bad' });
         }
@@ -817,8 +817,8 @@ function openAddStockModal({ templateId = null, itemName = null }) {
         const t = d.mode === 'template' && d.templateId ? Store.V.templates.get(d.templateId) : null;
         const name = t ? t.name : String(d.itemName || '').trim();
         if (!name) return setFieldError(m.el, 'itemName', 'Nom obligatoire.');
-        const q = Math.round(toNum(d.quantity, 0));
-        if (!(q >= 1)) return setFieldError(m.el, 'quantity', 'Au moins 1.');
+        if (!isPieceCount(d.quantity)) return setFieldError(m.el, 'quantity', PIECES_ERROR);
+        const q = toNum(d.quantity);
         if (d.unitCost !== null && (!Number.isFinite(d.unitCost) || d.unitCost < 0)) return setFieldError(m.el, 'unitCost', 'Coût invalide.');
         d.busy = true;
         const occurredAt = d.dateEdited ? fromLocalInput(d.occurredAt) : new Date().toISOString();
@@ -839,7 +839,7 @@ function openAdjustStockModal(group) {
     render: () => ({
       body: html`<div class="space-y-4">
         ${field('Quantité à retirer', inputNum('quantity', d.quantity, { inputmode: 'numeric', placeholder: '1' }))}
-        <div><span class="label">Raison</span><div class="flex flex-wrap gap-1.5">${Object.entries(ADJUST_REASONS).map(([k, v]) => html`<button data-action="reason" data-value="${k}" class="chip ${d.reason === k ? 'chip-active' : ''}">${v}</button>`)}</div></div>
+        <div><span class="label">Raison</span><div class="flex flex-wrap gap-1.5">${Object.entries(ADJUST_REASONS).map(([k, v]) => html`<button data-action="reason" data-value="${k}" aria-pressed="${d.reason === k}" class="chip ${d.reason === k ? 'chip-active' : ''}">${v}</button>`)}</div></div>
         ${field('Note', inputText('note', d.note, { placeholder: 'Précision (optionnel)', maxlength: 500 }))}
         <p class="text-[12px] text-slate-500">Les pièces les plus anciennes sont retirées en premier. Leur coût est compté comme une perte.</p>
       </div>`,
@@ -858,8 +858,8 @@ function openAdjustStockModal(group) {
       },
       submit: async (el, e, m) => {
         if (d.busy) return;
-        const q = Math.round(toNum(d.quantity, 0));
-        if (!(q >= 1) || q > group.qty) return setFieldError(m.el, 'quantity', `Entre 1 et ${group.qty}.`);
+        const q = toNum(d.quantity, NaN);
+        if (!isPieceCount(q) || q > group.qty) return setFieldError(m.el, 'quantity', `Nombre entier entre 1 et ${group.qty}.`);
         d.busy = true;
         const res = await runOp('stock.adjust', { id: uuid(), template_id: group.template_id, item_name: group.item_name, quantity: q, reason: d.reason, note: String(d.note || '').trim() || null, occurred_at: new Date().toISOString() }, { success: `${plural(q, 'pièce retirée', 'pièces retirées')} du stock` });
         d.busy = false;

@@ -127,6 +127,25 @@ function spoolPct(s) {
   const w = toNum(s.initial_weight_g);
   return w > 0 ? clamp((toNum(s.remaining_weight_g) / w) * 100, 0, 100) : 0;
 }
+
+// Une pesée ne peut pas dépasser le poids initial de plus de 5 % (léger surplus de certains fabricants) :
+// au-delà, c'est presque toujours la bobine vide oubliée. Même règle dans p3d_weigh_spool().
+const WEIGH_TOLERANCE = 1.05;
+function weighProblem(spool, measured) {
+  const w = toNum(spool && spool.initial_weight_g);
+  if (!(w > 0) || !(toNum(measured, -1) > roundDb(w * WEIGH_TOLERANCE, 2))) return null;
+  return `${fmtG(measured)}, c'est plus que le poids initial de la bobine (${fmtG(w)}) : as-tu retiré le poids de la bobine vide ? Sinon, corrige le poids initial de la bobine.`;
+}
+// Nombre de pièces saisi : un entier ≥ 1. Jamais arrondi en silence (« 1,5 » est une faute de frappe :
+// l'arrondir enregistrerait 2 pièces sans prévenir).
+function isPieceCount(v) {
+  const n = toNum(v, NaN);
+  return Number.isInteger(n) && n >= 1;
+}
+const PIECES_ERROR = 'Nombre entier de pièces (1, 2, 3…).';
+
+// Exemple de poids restant affiché dans les champs vides (proportionné à la bobine)
+const weighExample = (spool) => Math.round(toNum(spool && spool.initial_weight_g, 1000) * 0.64);
 const materialKey = (m) => normalizeText(m).replace(/[\s_-]+/g, ' ');
 
 function activeSpools(V) {
