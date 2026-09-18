@@ -567,6 +567,9 @@ function openTemplateModal({ template = null, duplicate = false }) {
           catalog_price: Number.isFinite(t0.catalog_price) ? roundDb(t0.catalog_price, 2) : null,
           archived: !!t0.archived,
         };
+        // Modification : l'archivage passe par template.patch (bouton Archiver, parfois sur un autre
+        // appareil pendant que ce formulaire est ouvert) — le formulaire ne doit pas le défaire.
+        if (editing) delete payload.archived;
         d.busy = true;
         const res = await runOp('template.save', payload, { success: editing ? 'Template enregistré' : `Template « ${payload.name} » créé` });
         d.busy = false;

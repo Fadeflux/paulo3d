@@ -281,7 +281,12 @@ const Boot = {
       if (navigator.onLine === false || !globalThis.caches) return;
       const reg = await navigator.serviceWorker.ready;
       if (!reg.active || reg.waiting) return;
-      if (await caches.has(`p3d-shell-${APP_VERSION}`)) return;
+      // ⚠️ Le cache peut EXISTER et être VIDE : le service worker le recrée (vide) à chaque
+      // requête via caches.open(), et une réparation ratée (4G faible) laisse aussi un cache
+      // vide. Tester son existence ne réparait donc presque jamais : on vérifie qu'il contient
+      // la page de l'appli — exactement ce que le service worker sert hors-ligne.
+      const shell = await caches.open(`p3d-shell-${APP_VERSION}`);
+      if ((await shell.match('./index.html')) || (await shell.match('./'))) return;
       reg.active.postMessage({ type: 'RECACHE', version: APP_VERSION });
     } catch { /* vérification facultative */ }
   },

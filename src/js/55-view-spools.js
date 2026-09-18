@@ -279,6 +279,14 @@ function openSpoolModal({ spool = null, duplicate = false }) {
           purchased_at: d.s.purchased_at || null,
           notes: String(d.s.notes || '').trim() || null,
         };
+        // Modification : l'archivage et la tare notée pendant une pesée passent par des modifications
+        // PARTIELLES (spool.patch), parfois sur un autre appareil pendant que ce formulaire est ouvert.
+        // Ne pas les remettre à leur valeur d'ouverture : la tare n'est renvoyée que si elle a changé ici.
+        if (editing) {
+          delete payload.archived;
+          const tare0 = spool.tare_g === null || spool.tare_g === undefined ? null : roundDb(spool.tare_g, 2);
+          if (payload.tare_g === tare0) delete payload.tare_g;
+        }
         lsSet('p3d_last_brand', payload.brand);
         const res = await runOp('spool.save', payload, { success: editing ? 'Bobine modifiée' : 'Bobine ajoutée' });
         if (opAccepted(res) && d.started) {

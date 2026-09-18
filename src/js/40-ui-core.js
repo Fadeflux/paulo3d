@@ -616,9 +616,13 @@ Actions['sync-panel'] = () => {
       close: (el, e, m) => m.close(),
       now: async (el) => {
         el.disabled = true;
-        await Sync.kick(true);
-        el.disabled = false;
-        toast(Sync.state.online ? 'Synchronisation terminée' : 'Toujours pas de connexion', { tone: Sync.state.online ? 'ok' : 'warn' });
+        let v;
+        try {
+          v = await Sync.syncNow();
+        } finally {
+          el.disabled = false;
+        }
+        toast(v.message, { tone: v.tone });
       },
       retry: (el) => Sync.retryOp(el.dataset.op),
       discard: async (el) => {

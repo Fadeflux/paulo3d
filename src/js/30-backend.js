@@ -7,17 +7,40 @@
 const PAGE = 1000;
 const REQUEST_TIMEOUT_MS = 30000;
 
-// Requête bloquée (réseau d'atelier instable, 4G faible) : abandon au bout de 30 s. Elle est alors
-// traitée comme une coupure (l'action reste en attente et repart plus tard) au lieu de bloquer
-// l'envoi de toutes les actions pendant plusieurs minutes.
+// Requête bloquée (réseau d'atelier instable, 4G faible) : abandon après 30 s SANS RIEN RECEVOIR.
+// Elle est alors traitée comme une coupure (l'action reste en attente et repart plus tard) au lieu
+// de bloquer l'envoi de toutes les actions pendant plusieurs minutes.
+// ⚠️ Délai d'INACTIVITÉ, pas délai total : le compteur repart à chaque morceau reçu. Un délai total
+// coupait à 30 s un téléchargement qui AVANÇAIT (première synchro d'un appareil : des Mo de
+// modèles avec photos sur une 4G faible) — « Hors-ligne », et le même téléchargement recommencé
+// sans fin. Un téléchargement BLOQUÉ à mi-chemin est toujours abandonné.
 async function fetchWithTimeout(input, init = {}) {
   if (init.signal || typeof AbortController === 'undefined') return fetch(input, init);
   const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  let timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS);
+  const relancer = () => { clearTimeout(timer); timer = setTimeout(() => ctrl.abort(), REQUEST_TIMEOUT_MS); };
   try {
     const res = await fetch(input, { ...init, signal: ctrl.signal });
-    // réponse lue ENTIÈREMENT sous le même délai : un téléchargement bloqué à mi-chemin est aussi abandonné
-    const body = [101, 204, 205, 304].includes(res.status) ? null : await res.arrayBuffer();
+    let body = null;
+    if (![101, 204, 205, 304].includes(res.status)) {
+      if (res.body && typeof res.body.getReader === 'function') {
+        const lecteur = res.body.getReader();
+        const morceaux = [];
+        let total = 0;
+        for (;;) {
+          const { done, value } = await lecteur.read();
+          if (done) break;
+          morceaux.push(value);
+          total += value.byteLength;
+          relancer();
+        }
+        body = new Uint8Array(total);
+        let pos = 0;
+        for (const m of morceaux) { body.set(m, pos); pos += m.byteLength; }
+      } else {
+        body = await res.arrayBuffer();
+      }
+    }
     return new Response(body, { status: res.status, statusText: res.statusText, headers: res.headers });
   } finally {
     clearTimeout(timer);

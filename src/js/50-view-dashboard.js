@@ -345,7 +345,7 @@ Actions['hist-search'] = debounce((el) => {
 }, 200);
 
 Actions['export-open'] = () => {
-  const stampDay = new Date().toISOString().slice(0, 10);
+  const stampDay = toLocalInput().slice(0, 10); // date LOCALE : après minuit en France, pas celle de la veille (UTC)
   const opt = (ic, title, text, action) => html`<button data-action="${action}" class="flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-ink-850 p-3.5 text-left transition hover:border-neon/30">
     <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-white/[0.04] text-neon">${icon(ic, 'w-5 h-5')}</span>
     <span class="min-w-0"><span class="block text-sm font-semibold text-slate-100">${title}</span><span class="block text-[12px] text-slate-400">${text}</span></span></button>`;

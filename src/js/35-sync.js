@@ -148,6 +148,29 @@ const Sync = {
     if (Store.Q.some((o) => o.status === 'pending')) await this.flush();
   },
 
+  // Bouton « Synchroniser maintenant » : attend la fin d'un envoi ou d'une lecture DÉJÀ en cours,
+  // puis annonce ce qui est VRAI. (18/09 : « Synchronisation terminée » s'affichait pendant qu'une
+  // vente lente partait encore, ou alors que rien n'était parti — session expirée.)
+  async syncNow({ maxWait = 30000 } = {}) {
+    await this.kick(true);
+    const until = Date.now() + maxWait;
+    while ((this.state.flushing || this.state.pulling) && Date.now() < until) await sleep(200);
+    return this.syncVerdict();
+  },
+
+  syncVerdict() {
+    const { pending, failed } = this.summary();
+    const s = this.state;
+    const actions = (n) => `${n} action${n > 1 ? 's' : ''}`;
+    if (s.needsLogin) return { tone: 'bad', message: pending ? `Reconnecte-toi : ${actions(pending)} en attente, rien n'est parti` : 'Reconnecte-toi pour synchroniser' };
+    if (!s.online) return { tone: 'warn', message: pending ? `Toujours pas de connexion · ${actions(pending)} en attente` : 'Toujours pas de connexion' };
+    if (s.flushing || s.pulling) return { tone: 'warn', message: 'Toujours en cours : la base répond lentement' };
+    if (s.lastError) return { tone: 'bad', message: s.lastError };
+    if (pending) return { tone: 'warn', message: `${actions(pending)} pas encore envoyée${pending > 1 ? 's' : ''}` };
+    if (failed) return { tone: 'bad', message: `${actions(failed)} refusée${failed > 1 ? 's' : ''} : voir ci-dessous` };
+    return { tone: 'ok', message: 'Synchronisation terminée' };
+  },
+
   // Enregistre une action. Résultat : confirmed | queued | failed | rejected
   // silent : action technique (pas d'annonce « envoyée » plus tard)
   async enqueue(type, payload, { wait = 7000, silent = false } = {}) {
