@@ -317,7 +317,7 @@ VIEWS.historique = {
             <input class="input pl-9" placeholder="Rechercher (article, bobine, canal…)" value="${q}" data-page-input="hist-search" data-keep="hist-search" autocomplete="off"/>
           </div>
         </div>
-        <div class="no-scrollbar -mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 lg:mx-0 lg:flex-wrap lg:px-0">${types.map((t) => html`<button data-action="hist-type" data-value="${t.value}" class="chip ${t.value === type ? 'chip-active' : ''}">${t.label}</button>`)}</div>
+        <div class="no-scrollbar -mx-4 -my-1.5 flex gap-2 overflow-x-auto px-4 py-1.5 lg:mx-0 lg:flex-wrap lg:px-0">${types.map((t) => html`<button data-action="hist-type" data-value="${t.value}" aria-pressed="${t.value === type}" class="chip ${t.value === type ? 'chip-active' : ''}">${t.label}</button>`)}</div>
       </div>
       ${events.length ? html`<div class="space-y-4">${[...days.entries()].map(([k, list]) => html`<section>
           <h3 class="mb-1.5 px-1 text-[12px] font-semibold uppercase tracking-wide text-slate-500">${dayHeader(list[0].date)}</h3>
