@@ -2,8 +2,12 @@
 // Lancer : node tools/build.mjs --dev && node --test tests/domain.test.mjs
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { loadApp, applyOps } from './load-app.mjs';
 
+const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const app = loadApp();
 const U = '00000000-0000-4000-8000-000000000001';
 const close = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≠ ${b}`);
@@ -512,6 +516,38 @@ test('attributs HTML : toujours échappés', () => {
   assert.ok(!out.includes('hidden'));
   assert.throws(() => app.attrList('onclick="x"'));
   assert.throws(() => app.attrList({ 'on click': 'x' }));
+});
+
+test('mot de passe : même règle que le projet Supabase (12 caractères, minuscule, majuscule, chiffre, symbole)', () => {
+  const p = app.passwordProblem;
+  assert.equal(app.PASSWORD_MIN, 12);
+  assert.match(p('password Test'), /chiffre.*symbole/);
+  assert.match(p('Court1!'), /Trop court/);
+  assert.match(p('passwordtest12!'), /majuscule/);
+  assert.match(p('PASSWORDTEST12!'), /minuscule/);
+  assert.match(p('PasswordTest!!'), /chiffre/);
+  assert.match(p('PasswordTest12'), /symbole/);
+  assert.match(p('PasswordTest12 '), /symbole/, "l'espace n'est pas un symbole pour Supabase");
+  assert.match(p('PasswordTest12€'), /symbole/, "€ n'est pas dans la liste de Supabase");
+  assert.equal(p('PasswordTest12!'), null);
+  assert.equal(p('Abcdefghijk1\\'), null);
+  assert.equal(p(`Aa1!${'x'.repeat(68)}`), null, '72 octets : accepté');
+  assert.match(p(`Aa1!${'x'.repeat(69)}`), /Trop long/);
+  assert.match(p(`Aa1!${'é'.repeat(35)}`), /Trop long/, 'les lettres accentuées comptent double (74 octets)');
+});
+
+test('connexion : messages de Supabase traduits, aucune inscription possible depuis l’appli', () => {
+  const m = (message, code) => app.authErrorMessage({ message, code });
+  assert.equal(m('Invalid login credentials', 'invalid_credentials'), 'Email ou mot de passe incorrect.');
+  assert.match(m('Signups not allowed for this instance', 'signup_disabled'), /inscriptions sont fermées/);
+  assert.match(m('Email address "a@b.fr" cannot be used as it is not authorized', 'email_address_not_authorized'), /ne peut pas envoyer d'email/);
+  assert.match(m('Password should contain at least one character of each: abcdefghijklmnopqrstuvwxyz, ABCDEFGHIJKLMNOPQRSTUVWXYZ', 'weak_password'), /12 caractères/);
+  assert.match(m('Password should be at least 12 characters.', 'weak_password'), /12 caractères/);
+  assert.match(m('New password should be different from the old password.', 'same_password'), /différent/);
+  assert.match(m('Password cannot be longer than 72 characters'), /trop long/);
+  assert.match(m('Request rate limit reached', 'over_request_rate_limit'), /Trop de tentatives/);
+  const code = fs.readFileSync(path.join(ROOT, '.dev', 'app.js'), 'utf8');
+  assert.ok(!/\.signUp\s*\(/.test(code), 'aucun appel de création de compte dans l’appli');
 });
 
 test('icônes : toutes celles demandées sont présentes dans le build', () => {

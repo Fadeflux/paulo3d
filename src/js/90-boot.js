@@ -11,12 +11,23 @@ const Boot = {
   notifierBound: false,
 
   async start() {
+    // Jamais utilisable à l'intérieur d'un autre site (piège à clics) : GitHub Pages ne permet pas
+    // d'interdire les cadres par en-tête, l'appli refuse donc elle-même de démarrer dans un cadre.
+    if (this.framed()) return Screens.framed();
     this.captureInstallPrompt();
     this.registerServiceWorker();
     if (navigator.storage && navigator.storage.persist) navigator.storage.persist().catch(() => {});
     const link = this.readSetupLink();
     if (link) return this.confirmSetupLink(link);
     await this.route();
+  },
+
+  framed() {
+    try {
+      return window.top !== window.self;
+    } catch {
+      return true;
+    }
   },
 
   async route() {

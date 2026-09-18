@@ -20,9 +20,12 @@ Application web installable sur PC et téléphone : bobines de filament, coût d
    Vérification : `select public.p3d_version();` doit répondre `1`.
 3. Bouton **Connect** en haut du projet (ou **Project Settings → API Keys**) : note l'**URL du projet** (`https://xxxx.supabase.co`) et la clé **publishable** (ou **anon**).
    ⚠️ Ne copie jamais la clé **secret** / **service_role** : l'application la refuse.
-4. **Authentication → URL Configuration** : mets l'adresse du site (`https://fadeflux.github.io/paulo3d/`) dans **Site URL** et dans **Redirect URLs**. Sans ça, les liens reçus par email (confirmation du compte, mot de passe oublié) ne ramènent pas vers l'application.
-5. Crée le compte de l'atelier : soit depuis l'application (« Créer le compte », puis clique sur le lien reçu par email), soit dans **Authentication → Users → Add user** (coche « Auto Confirm User »).
-6. Une fois le compte créé, ferme les inscriptions : **Authentication → Sign In / Providers → Allow new users to sign up** = désactivé.
+4. **Authentication → URL Configuration** : mets l'adresse du site (`https://fadeflux.github.io/paulo3d/`) dans **Site URL** et dans **Redirect URLs**. Sans ça, le lien « mot de passe oublié » reçu par email ne ramène pas vers l'application.
+5. **Fermer les inscriptions** (l'application n'a volontairement AUCUN bouton d'inscription) :
+   - **Authentication → Sign In / Providers → Allow new users to sign up** = désactivé ;
+   - même page, **Email → Minimum password length** = `12` et **Password requirements** = « Lowercase, uppercase letters, digits and symbols » (l'application applique la même règle) ;
+   - **Authentication → Rate Limits → sign-ups and sign-ins** = `10` par 5 minutes (freine les essais de mots de passe).
+6. **Créer LE compte de l'atelier** (le seul) : **Authentication → Users → Add user → Create new user** : un email, un mot de passe d'au moins 12 caractères (minuscule, majuscule, chiffre, symbole), coche **Auto Confirm User**. C'est cet email + ce mot de passe qu'on tape dans l'application (Supabase ne connaît pas les noms d'utilisateur, seulement les emails).
 
 > Le script peut être relancé sans rien perdre : c'est aussi comme ça qu'on applique une mise à jour de la base.
 
@@ -54,7 +57,12 @@ Application web installable sur PC et téléphone : bobines de filament, coût d
 - **Coût de revient figé** : chaque production garde le coût du jour. Changer un prix de bobine plus tard ne modifie pas les marges passées.
 - **Sauvegardes** : Paramètres → Données → **Exporter** (JSON complet ou CSV pour Excel). L'offre gratuite de Supabase ne fournit pas de sauvegarde restaurable : exporte régulièrement.
 - **Projet en pause** : un projet Supabase gratuit inutilisé pendant plusieurs jours peut être mis en pause par Supabase. Il suffit de le relancer depuis le tableau de bord Supabase.
-- **Sécurité** : chaque ligne de la base appartient à un compte ; sans connexion, rien n'est lisible (Row Level Security). La clé publique peut être visible sans risque, c'est prévu pour.
+- **Sécurité** :
+  - chaque ligne de la base appartient à un compte ; sans connexion, rien n'est lisible ni modifiable (Row Level Security, vérifiée par les tests). La clé publique peut être visible sans risque, c'est prévu pour ;
+  - aucune inscription possible (ni dans l'application, ni côté Supabase) : seul le compte créé dans le tableau de bord peut entrer ;
+  - la page n'exécute que son propre code (reconnu par son empreinte) et 4 bibliothèques à adresse exacte, vérifiées par leur intégrité : un code glissé dans la page est bloqué par le navigateur ;
+  - les données ne peuvent partir que vers Supabase ; la page refuse de s'afficher dans le cadre d'un autre site ; elle n'est pas indexée par les moteurs de recherche ;
+  - limite à connaître : tous les sites `fadeflux.github.io/…` partagent la même adresse, donc le même stockage du navigateur. Un autre de ces sites, s'il était piraté, pourrait lire la session de Paulo3D sur un appareil où les deux ont été ouverts. Pour une séparation totale, héberger Paulo3D sur sa propre adresse.
 
 ---
 
@@ -74,6 +82,6 @@ npm run build
 npm test
 ```
 
-`npm test` lance près de 80 tests : le script SQL sur un vrai PostgreSQL local (sécurité, stock FIFO, pesées, rejeu sans doublon, suppressions qui ne reviennent pas), la parité entre les calculs de l'application et ceux de la base, la synchronisation (ordre des modifications, temps réel, session expirée, suppressions sur un autre appareil), le fonctionnement hors-ligne après une mise à jour, et les calculs de coûts, prix, graphiques et import slicer.
+`npm test` lance près de 90 tests : le script SQL sur un vrai PostgreSQL local (sécurité, stock FIFO, pesées, rejeu sans doublon, suppressions qui ne reviennent pas), la parité entre les calculs de l'application et ceux de la base, la synchronisation (ordre des modifications, temps réel, session expirée, suppressions sur un autre appareil), le fonctionnement hors-ligne après une mise à jour, la politique de sécurité de la page, la règle des mots de passe, et les calculs de coûts, prix, graphiques et import slicer.
 
 Tests de bout en bout sans toucher une vraie base : `node tools/dev-supabase.mjs` démarre une imitation locale de Supabase (PostgreSQL + PostgREST officiel + connexion), puis `node tools/build.mjs --dev` produit un site de test dans `.dev/site/`.

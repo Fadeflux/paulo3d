@@ -10,6 +10,7 @@ import vm from 'node:vm';
 import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
+import { CDN, FONT_CSS } from './cdn.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
@@ -21,24 +22,19 @@ const fail = (msg) => {
   process.exit(1);
 };
 
-export const CDN = {
-  supabase: 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js',
-  chart: 'https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js',
-  jszip: 'https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js',
-  qrcode: 'https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js',
-};
-export const FONT_CSS = 'https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@500;600;700&display=swap';
 
 fs.mkdirSync(path.join(ROOT, '.dev'), { recursive: true });
 
 // 1. JavaScript : concaténation dans l'ordre des fichiers
 const jsDir = path.join(ROOT, 'src', 'js');
 const files = fs.readdirSync(jsDir).filter((f) => f.endsWith('.js')).sort();
-let js = files.map((f) => `/* ==== ${f} ==== */\n${fs.readFileSync(path.join(jsDir, f), 'utf8')}`).join('\n');
-const htmlTpl = read('src/index.html');
+// fins de ligne LF partout : le navigateur calcule l'empreinte du script (CSP) sur du texte en LF
+const lf = (t) => t.replace(/\r\n?/g, '\n');
+let js = lf(files.map((f) => `/* ==== ${f} ==== */\n${fs.readFileSync(path.join(jsDir, f), 'utf8')}`).join('\n'));
+const htmlTpl = lf(read('src/index.html'));
 
-for (const k of ['jszip', 'qrcode']) if (!js.includes(CDN[k])) fail(`l'adresse ${k} du code ne correspond pas à tools/build.mjs`);
-for (const k of ['supabase', 'chart']) if (!htmlTpl.includes(CDN[k])) fail(`l'adresse ${k} de index.html ne correspond pas à tools/build.mjs`);
+for (const k of ['jszip', 'qrcode']) if (!js.includes(CDN[k])) fail(`l'adresse ${k} du code ne correspond pas à tools/cdn.mjs`);
+for (const k of ['supabase', 'chart']) if (!htmlTpl.includes(CDN[k])) fail(`l'adresse ${k} de index.html ne correspond pas à tools/cdn.mjs`);
 
 // 2. Icônes Lucide : seulement celles utilisées, intégrées au fichier (rapide, marche hors-ligne)
 const lucide = require('lucide');
@@ -86,7 +82,7 @@ js = js.replace("'__SRI_JSZIP__'", () => JSON.stringify(sri[CDN.jszip])).replace
 // 5. Version = empreinte du contenu (même contenu → même version → pas de fausse mise à jour)
 const pkg = JSON.parse(read('package.json'));
 const hash = crypto.createHash('sha256')
-  .update(js).update(css).update(htmlTpl).update(read('src/sw.js')).update(read('src/manifest.webmanifest'))
+  .update(js).update(css).update(htmlTpl).update(read('src/sw.js')).update(read('src/manifest.webmanifest')).update(lf(read('tools/build.mjs'))).update(lf(read('tools/cdn.mjs')))
   .digest('hex').slice(0, 8);
 const version = `${pkg.version}-${hash}`;
 js = js.replace(/'__APP_VERSION__'/g, () => JSON.stringify(version));
@@ -112,31 +108,46 @@ const ctx = vm.createContext({ Intl, Math, Date, JSON, Object, Array, String, Nu
 vm.runInContext(`${fs.readFileSync(path.join(jsDir, '00-core.js'), 'utf8')}\n;globalThis.__logo = String(logoMark(76, { tile: true, animated: true }));`, ctx);
 const splashLogo = ctx.__logo;
 
-// 8. Politique de sécurité du contenu (CSP) : scripts seulement depuis la page et jsdelivr (avec intégrité)
+// 8. Politique de sécurité du contenu (CSP). Seuls peuvent s'exécuter :
+//    - le script intégré à CETTE page, reconnu par son empreinte sha256 (calculée après assemblage) ;
+//    - les 4 bibliothèques jsdelivr, à leur adresse EXACTE (et vérifiées par leur intégrité).
+//    Un code glissé dans la page (attribut onclick, <img onerror>, autre script jsdelivr…) est bloqué.
+//    'unsafe-inline' ne sert qu'aux très vieux navigateurs : il est ignoré dès qu'une empreinte est présente.
 const connect = ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', 'https://*.supabase.in', 'wss://*.supabase.in', 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
 if (DEV) connect.push('http://127.0.0.1:*', 'ws://127.0.0.1:*', 'http://localhost:*', 'ws://localhost:*');
-const csp = [
+const cspFor = (inlineHashes) => [
   "default-src 'self'",
-  "script-src 'self' 'unsafe-inline' https://cdn.jsdelivr.net",
+  `script-src 'self' ${inlineHashes.map((h) => `'${h}'`).join(' ')} 'unsafe-inline' ${Object.values(CDN).join(' ')}`,
   "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
   "font-src 'self' https://fonts.gstatic.com",
   "img-src 'self' data: blob:",
   `connect-src ${connect.join(' ')}`,
   "worker-src 'self'",
   "manifest-src 'self'",
+  "frame-src 'none'",
   "base-uri 'self'",
   "form-action 'self'",
   "object-src 'none'",
 ].join('; ');
+// aucun code dans les attributs HTML (onclick=…, href="javascript:…") : la CSP les bloquerait
+for (const [what, text] of [['le code', js], ['index.html', htmlTpl]]) {
+  const bad = text.match(/\son[a-z]+\s*=\s*["'`]|javascript:/i);
+  if (bad) fail(`${what} contient « ${bad[0].trim()} » : code dans un attribut HTML, bloqué par la CSP (utiliser addEventListener)`);
+}
 
-const outHtml = htmlTpl
-  .replace('{{CSP}}', () => csp)
+let outHtml = htmlTpl
   .replace('{{FONT_CSS}}', () => FONT_CSS.replace(/&/g, '&amp;'))
   .replace('{{CSS}}', () => css)
   .replace('{{SPLASH_LOGO}}', () => splashLogo)
   .replace('{{SRI_SUPABASE}}', () => sri[CDN.supabase])
   .replace('{{SRI_CHART}}', () => sri[CDN.chart])
   .replace('{{JS}}', () => js);
+// empreinte du texte EXACT de chaque script intégré (le navigateur calcule la même avant de l'exécuter)
+const inlineScripts = [...outHtml.matchAll(/<script>([\s\S]*?)<\/script>/g)].map((m) => m[1]);
+if (inlineScripts.length !== 1) fail(`un seul script intégré attendu dans index.html, trouvé ${inlineScripts.length}`);
+if ((outHtml.match(/<script\b/g) || []).length !== inlineScripts.length + 2) fail('script inattendu dans index.html (la CSP ne le laisserait pas s’exécuter)');
+const csp = cspFor(inlineScripts.map((t) => `sha256-${crypto.createHash('sha256').update(t, 'utf8').digest('base64')}`));
+outHtml = outHtml.replace('{{CSP}}', () => csp);
 if (/\{\{[A-Z_]+\}\}/.test(outHtml)) fail(`marqueur non remplacé : ${outHtml.match(/\{\{[A-Z_]+\}\}/)[0]}`);
 
 const cdnList = Object.values(CDN).map((url) => ({ url, cors: true }));

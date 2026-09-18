@@ -43,15 +43,37 @@ async function testSupabase(url, key) {
   }
 }
 
+// Même règle que le projet Supabase (Authentication → Sign In / Providers → Email) :
+// 12 caractères minimum avec minuscule, majuscule, chiffre et symbole (liste de symboles de Supabase)
+const PASSWORD_MIN = 12;
+const PASSWORD_MAX = 72; // limite de Supabase (bcrypt)
+const PASSWORD_RULE = `au moins ${PASSWORD_MIN} caractères avec une minuscule, une majuscule, un chiffre et un symbole (! ? @ # $ % & * …)`;
+function passwordProblem(pw) {
+  const p = String(pw || '');
+  if (p.length < PASSWORD_MIN) return `Trop court : ${PASSWORD_RULE}.`;
+  // Supabase compte en octets : une lettre accentuée en vaut deux
+  if (new TextEncoder().encode(p).length > PASSWORD_MAX) return `Trop long : ${PASSWORD_MAX} caractères maximum (une lettre accentuée compte double).`;
+  const missing = [];
+  if (!/[a-z]/.test(p)) missing.push('une minuscule');
+  if (!/[A-Z]/.test(p)) missing.push('une majuscule');
+  if (!/[0-9]/.test(p)) missing.push('un chiffre');
+  if (!/[!@#$%^&*()_+\-=[\]{};'\\:"|<>?,./`~]/.test(p)) missing.push('un symbole (! ? @ # $ % & * …)');
+  return missing.length ? `Il manque ${missing.join(', ')}.` : null;
+}
+
 function authErrorMessage(error) {
   const msg = String((error && error.message) || '');
   const code = String((error && (error.code || error.error_code)) || '');
   if (/invalid login credentials/i.test(msg) || code === 'invalid_credentials') return 'Email ou mot de passe incorrect.';
   if (/email not confirmed/i.test(msg) || code === 'email_not_confirmed') return 'Adresse pas encore confirmée : clique sur le lien reçu par email, puis reconnecte-toi.';
-  if (/signups? not allowed|signup(s)? (are )?disabled/i.test(msg) || code === 'signup_disabled') return "Les inscriptions sont fermées sur ce projet (c'est bien pour la sécurité). Crée le compte dans Supabase : Authentication → Users → Add user.";
-  if (/already registered|user already exists/i.test(msg) || code === 'user_already_exists') return 'Un compte existe déjà avec cet email : connecte-toi.';
-  if (/password should be|weak password/i.test(msg) || code === 'weak_password') return 'Mot de passe trop faible : au moins 8 caractères, mélange lettres et chiffres.';
-  if (/rate limit|too many/i.test(msg) || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') return 'Trop de tentatives : patiente quelques minutes.';
+  if (/banned/i.test(msg) || code === 'user_banned') return 'Ce compte est bloqué.';
+  if (/signups? not allowed|signup(s)? (are )?disabled/i.test(msg) || code === 'signup_disabled') return "Les inscriptions sont fermées sur ce projet (c'est voulu, pour la sécurité). Le compte se crée dans Supabase : Authentication → Users → Add user.";
+  if (/email address.*not authorized/i.test(msg) || code === 'email_address_not_authorized') return "Supabase ne peut pas envoyer d'email à cette adresse (l'envoi gratuit de Supabase est réservé aux membres du projet). Le mot de passe peut être changé depuis le tableau de bord Supabase.";
+  if (/should be different|same password/i.test(msg) || code === 'same_password') return "Le nouveau mot de passe doit être différent de l'ancien.";
+  if (/reauthenticat/i.test(msg) || code === 'reauthentication_needed') return 'Par sécurité, déconnecte-toi puis reconnecte-toi avant de changer le mot de passe.';
+  if (/longer than 72/i.test(msg)) return `Mot de passe trop long : ${PASSWORD_MAX} caractères maximum.`;
+  if (/password should be|weak password|password.*(contain|characters)/i.test(msg) || code === 'weak_password') return `Mot de passe trop faible : ${PASSWORD_RULE}.`;
+  if (/rate limit|too many/i.test(msg) || code === 'over_email_send_rate_limit' || code === 'over_request_rate_limit') return 'Trop de tentatives : patiente quelques minutes avant de réessayer.';
   if (/abort/i.test(msg)) return 'Supabase ne répond pas (délai dépassé). Vérifie la connexion internet puis réessaie.';
   if (/fetch|network|load failed/i.test(msg)) return 'Pas de connexion avec Supabase. Vérifie internet.';
   return msg || 'Erreur inconnue.';
@@ -102,7 +124,14 @@ const Screens = {
   },
 
   fatal(message) {
-    this.frame(html`<div class="card p-5 text-center"><div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-rose-500/10 text-rose-300">${icon('CloudOff', 'w-6 h-6')}</div><p class="text-sm text-slate-300">${message}</p><button class="btn btn-primary mt-4 h-11 rounded-xl px-4" onclick="location.reload()">Recharger</button></div>`);
+    const el = this.frame(html`<div class="card p-5 text-center"><div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-rose-500/10 text-rose-300">${icon('CloudOff', 'w-6 h-6')}</div><p class="text-sm text-slate-300">${message}</p><button class="btn btn-primary mt-4 h-11 rounded-xl px-4" data-reload>Recharger</button></div>`);
+    // pas d'attribut onclick : la sécurité de la page (CSP) interdit le code écrit dans le HTML
+    el.querySelector('[data-reload]').addEventListener('click', () => location.reload());
+  },
+
+  // Page ouverte dans le cadre d'un autre site : rien d'utilisable, seulement un lien vers la vraie adresse
+  framed() {
+    this.frame(html`<div class="card p-5 text-center"><div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-amber-400/10 text-amber-300">${icon('ShieldAlert', 'w-6 h-6')}</div><p class="text-sm text-slate-300">Par sécurité, Paulo3D ne s'ouvre pas à l'intérieur d'un autre site.</p><a class="btn btn-primary mt-4 h-11 rounded-xl px-4" href="${`${location.origin}${location.pathname}`}" target="_blank" rel="noopener noreferrer">Ouvrir Paulo3D</a></div>`);
   },
 
   setup({ fromSettings = false } = {}) {
@@ -179,27 +208,27 @@ const Screens = {
     if (back) back.addEventListener('click', () => Screens.hide());
   },
 
-  login({ relogin = false, mode = 'login', notice = '' } = {}) {
+  // Connexion seulement : aucune inscription depuis l'appli (accès privé, les inscriptions sont
+  // aussi fermées côté Supabase). Le compte se crée dans le tableau de bord Supabase.
+  login({ relogin = false, notice = '' } = {}) {
     const backend = Boot.backend;
     if (!backend || backend.kind !== 'supabase') return this.setup();
     const cfg = lsGet(LS.supa, {});
     const lastEmail = lsGet('p3d_last_email', '');
-    const signup = mode === 'signup';
     const el = this.frame(html`
       <div class="card p-5 sm:p-6">
-        <h1 class="font-display text-2xl font-bold text-slate-50">${signup ? 'Créer le compte' : relogin ? 'Reconnexion' : 'Connexion'}</h1>
-        <p class="mt-1 text-sm text-slate-400">${signup ? 'Le compte de l’atelier. Utilise-le ensuite sur tous tes appareils.' : relogin ? 'Ta session a expiré. Les actions en attente sont gardées et partiront après la connexion.' : 'Connecte-toi pour accéder aux données de l’atelier.'}</p>
+        <h1 class="font-display text-2xl font-bold text-slate-50">${relogin ? 'Reconnexion' : 'Connexion'}</h1>
+        <p class="mt-1 text-sm text-slate-400">${relogin ? 'Ta session a expiré. Les actions en attente sont gardées et partiront après la connexion.' : 'Connecte-toi pour accéder aux données de l’atelier.'}</p>
         <form class="mt-5 space-y-4" id="login-form" novalidate>
           ${field('Email', inputText('email', lastEmail, { type: 'email', placeholder: 'atelier@exemple.fr', maxlength: 200, attrs: { autocomplete: 'username', autocapitalize: 'off', inputmode: 'email' } }))}
-          ${field('Mot de passe', html`<div class="relative"><input class="input pr-12" type="password" name="password" placeholder="••••••••" autocomplete="${signup ? 'new-password' : 'current-password'}" maxlength="200"/>
-            <button type="button" class="absolute inset-y-0 right-2 my-auto grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:text-slate-200" id="pw-toggle" aria-label="Afficher le mot de passe">${icon('Eye', 'w-4 h-4')}</button></div>`)}
-          ${signup ? field('Confirmer le mot de passe', html`<input class="input" type="password" name="password2" placeholder="••••••••" autocomplete="new-password" maxlength="200"/>`) : ''}
+          ${field('Mot de passe', html`<div class="relative"><input class="input pr-12" type="password" name="password" placeholder="••••••••" autocomplete="current-password" maxlength="200"/>
+            <button type="button" class="absolute inset-y-0 right-2 my-auto grid h-8 w-8 place-items-center rounded-lg text-slate-500 hover:text-slate-200" id="pw-toggle" aria-label="Afficher le mot de passe" aria-pressed="false">${icon('Eye', 'w-4 h-4')}</button></div>`)}
           <div id="login-msg">${notice ? raw(String(html`<div class="rounded-xl border border-cyan-400/30 bg-cyan-400/10 p-3 text-[13px] text-cyan-200">${notice}</div>`)) : ''}</div>
-          <button type="submit" class="btn btn-primary h-12 w-full rounded-xl text-[15px]">${icon(signup ? 'UserPlus' : 'LogIn', 'w-5 h-5')}<span>${signup ? 'Créer le compte' : 'Se connecter'}</span></button>
+          <button type="submit" class="btn btn-primary h-12 w-full rounded-xl text-[15px]">${icon('LogIn', 'w-5 h-5')}<span>Se connecter</span></button>
         </form>
         <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-[13px]">
-          <button class="font-medium text-neon" id="switch-mode">${signup ? "J'ai déjà un compte" : 'Créer le compte'}</button>
-          ${signup ? '' : html`<button class="text-slate-400 hover:text-slate-200" id="forgot">Mot de passe oublié ?</button>`}
+          <span class="inline-flex items-center gap-1.5 text-slate-500">${icon('ShieldCheck', 'w-4 h-4 shrink-0')}Accès privé</span>
+          <button class="text-slate-400 hover:text-slate-200" id="forgot">Mot de passe oublié ?</button>
         </div>
       </div>
       <div class="mt-5 flex flex-col items-center gap-2 text-[12px] text-slate-500">
@@ -213,11 +242,11 @@ const Screens = {
       const t = TONES[tone];
       msg.innerHTML = text ? String(html`<div class="rounded-xl border ${t.border} ${t.bg} p-3 text-[13px] ${t.text}">${text}</div>`) : '';
     };
-    el.querySelector('#pw-toggle').addEventListener('click', () => {
+    el.querySelector('#pw-toggle').addEventListener('click', (e) => {
       const i = form.password;
       i.type = i.type === 'password' ? 'text' : 'password';
+      e.currentTarget.setAttribute('aria-pressed', String(i.type === 'text'));
     });
-    el.querySelector('#switch-mode').addEventListener('click', () => this.login({ relogin, mode: signup ? 'login' : 'signup' }));
     el.querySelector('#change-base').addEventListener('click', () => this.setup({ fromSettings: false }));
     const forgot = el.querySelector('#forgot');
     if (forgot) {
@@ -236,19 +265,11 @@ const Screens = {
       const email = form.email.value.trim().toLowerCase();
       const password = form.password.value;
       if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) return show('Email invalide.');
-      if (password.length < (signup ? 8 : 1)) return show(signup ? 'Au moins 8 caractères.' : 'Indique le mot de passe.');
-      if (signup && password !== form.password2.value) return show('Les deux mots de passe ne correspondent pas.');
+      if (!password) return show('Indique le mot de passe.');
       const button = form.querySelector('button[type="submit"]');
       button.disabled = true;
-      show(signup ? 'Création du compte…' : 'Connexion…', 'info');
+      show('Connexion…', 'info');
       try {
-        if (signup) {
-          const { data, error } = await backend.sb.auth.signUp({ email, password, options: { emailRedirectTo: `${location.origin}${location.pathname}` } });
-          if (error) return show(authErrorMessage(error));
-          lsSet('p3d_last_email', email);
-          if (data && data.session) return Boot.enter(backend, data.session.user);
-          return this.login({ mode: 'login', notice: 'Compte créé. Clique sur le lien de confirmation reçu par email, puis connecte-toi ici.' });
-        }
         const { data, error } = await backend.sb.auth.signInWithPassword({ email, password });
         if (error) return show(authErrorMessage(error));
         lsSet('p3d_last_email', email);
@@ -274,8 +295,8 @@ function openNewPasswordModal({ title = 'Nouveau mot de passe' } = {}) {
     size: 'sm',
     render: () => ({
       body: html`<div class="space-y-4">
-        ${field('Nouveau mot de passe', html`<input class="input" type="password" name="p1" autocomplete="new-password" placeholder="Au moins 8 caractères" autofocus/>`)}
-        ${field('Confirmer', html`<input class="input" type="password" name="p2" autocomplete="new-password"/>`)}
+        ${field('Nouveau mot de passe', html`<input class="input" type="password" name="p1" autocomplete="new-password" maxlength="${PASSWORD_MAX}" placeholder="${PASSWORD_MIN} caractères minimum" autofocus/>`, { hint: `Au moins ${PASSWORD_MIN} caractères, avec minuscule, majuscule, chiffre et symbole.` })}
+        ${field('Confirmer', html`<input class="input" type="password" name="p2" autocomplete="new-password" maxlength="${PASSWORD_MAX}"/>`)}
       </div>`,
       footer: html`<div class="flex justify-end gap-2">${btn('Annuler', { variant: 'ghost', action: 'cancel' })}${btn('Enregistrer', { variant: 'primary', icon: 'Check', action: 'submit' })}</div>`,
     }),
@@ -283,7 +304,8 @@ function openNewPasswordModal({ title = 'Nouveau mot de passe' } = {}) {
       cancel: (el, e, m) => m.close(),
       submit: async (el, e, m) => {
         const f = readForm(m.el);
-        if (String(f.p1).length < 8) return setFieldError(m.el, 'p1', 'Au moins 8 caractères.');
+        const problem = passwordProblem(f.p1);
+        if (problem) return setFieldError(m.el, 'p1', problem);
         if (f.p1 !== f.p2) return setFieldError(m.el, 'p2', 'Les mots de passe ne correspondent pas.');
         el.disabled = true;
         const { error } = await backend.sb.auth.updateUser({ password: f.p1 });
