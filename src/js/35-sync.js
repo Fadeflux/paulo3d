@@ -38,6 +38,7 @@ const Sync = {
     lastConfirmAt: null,
     lastError: null,
     needsLogin: false,
+    needsMfa: false, // double authentification : code à 6 chiffres à saisir avant de synchroniser
     schemaVersion: null,
     firstPullDone: false,
   },
@@ -69,6 +70,7 @@ const Sync = {
     this.stop();
     this.backend = backend;
     this.state.needsLogin = false;
+    this.state.needsMfa = false;
     this.state.firstPullDone = false;
     this.state.schemaVersion = null;
     const onOnline = () => {
@@ -163,6 +165,7 @@ const Sync = {
     const s = this.state;
     const actions = (n) => `${n} action${n > 1 ? 's' : ''}`;
     if (s.needsLogin) return { tone: 'bad', message: pending ? `Reconnecte-toi : ${actions(pending)} en attente, rien n'est parti` : 'Reconnecte-toi pour synchroniser' };
+    if (s.needsMfa) return { tone: 'bad', message: pending ? `Entre ton code de double authentification : ${actions(pending)} en attente, rien n'est parti` : 'Entre ton code de double authentification pour synchroniser' };
     if (!s.online) return { tone: 'warn', message: pending ? `Toujours pas de connexion · ${actions(pending)} en attente` : 'Toujours pas de connexion' };
     if (s.flushing || s.pulling) return { tone: 'warn', message: 'Toujours en cours : la base répond lentement' };
     if (s.lastError) return { tone: 'bad', message: s.lastError };
@@ -220,7 +223,7 @@ const Sync = {
   },
 
   async flush() {
-    if (!this.backend || !this.backend.ready() || this.state.needsLogin) {
+    if (!this.backend || !this.backend.ready() || this.state.needsLogin || this.state.needsMfa) {
       this.resolvePendingAsQueued();
       return;
     }
@@ -234,7 +237,7 @@ const Sync = {
       await withLock(`p3d-flush:${Store.dbName}`, async () => {
         await Store.reloadQueue();
         for (;;) {
-          if (this.state.needsLogin) {
+          if (this.state.needsLogin || this.state.needsMfa) {
             this.resolvePendingAsQueued();
             return;
           }
@@ -253,6 +256,13 @@ const Sync = {
               await Store.putOp({ ...op, status: 'pending', authRetried: false });
               this.state.online = false;
               this.scheduleRetry();
+              this.resolvePendingAsQueued();
+              return;
+            }
+            if (kind === 'mfa') {
+              // la base exige le code : rien n'est refusé, tout attend la saisie du code
+              await Store.putOp({ ...op, status: 'pending', authRetried: false });
+              this.state.needsMfa = true;
               this.resolvePendingAsQueued();
               return;
             }
@@ -315,7 +325,7 @@ const Sync = {
   },
 
   async pull({ reconcile = false } = {}) {
-    if (!this.backend || !this.backend.ready() || this.state.pulling || this.state.needsLogin) return;
+    if (!this.backend || !this.backend.ready() || this.state.pulling || this.state.needsLogin || this.state.needsMfa) return;
     this.state.pulling = true;
     this.emit();
     const startedAt = Date.now();
@@ -358,6 +368,8 @@ const Sync = {
       if (kind === 'network') {
         this.state.online = false;
         this.scheduleRetry();
+      } else if (kind === 'mfa') {
+        this.state.needsMfa = true;
       } else if (kind === 'auth') {
         const r = await this.backend.refreshAuth();
         if (r === 'invalid') this.state.needsLogin = true;
@@ -422,6 +434,7 @@ const Sync = {
       return { tone: 'demo', label: failed ? `Démo · ${failed} refusée${failed > 1 ? 's' : ''}` : 'Mode démo', pending, failed };
     }
     if (s.needsLogin) return { tone: 'bad', label: 'Reconnexion requise', pending, failed };
+    if (s.needsMfa) return { tone: 'bad', label: 'Code requis', pending, failed };
     if (failed) return { tone: 'bad', label: `${failed} action${failed > 1 ? 's' : ''} refusée${failed > 1 ? 's' : ''}`, pending, failed };
     if (!s.online) return { tone: 'off', label: pending ? `Hors-ligne · ${pending} en attente` : 'Hors-ligne', pending, failed };
     if (pending || s.flushing) return { tone: 'warn', label: pending ? `Envoi · ${pending} en attente` : 'Envoi…', pending, failed };

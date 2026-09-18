@@ -81,6 +81,9 @@ const Boot = {
     }
     if (!user && navigator.onLine === false) user = this.storedUser(backend);
     if (!user) return Screens.login();
+    // double authentification activée et session « mot de passe seul » (appli fermée sur l'écran du code)
+    const factorId = await Mfa.factorToVerify(backend);
+    if (factorId) return Screens.mfa({ backend, user, factorId });
     return this.enter(backend, user);
   },
 
@@ -100,6 +103,7 @@ const Boot = {
   async enter(backend, user) {
     backend.userId = user.id;
     backend.email = user.email || '';
+    Mfa.reset();
     await Store.open(`${backend.ref}:${user.id}`, user.id);
     Screens.hide();
     App.start();
@@ -170,6 +174,11 @@ const Boot = {
       Sync.state.needsLogin = false;
       Sync.kick();
     }
+    // code de double authentification validé (écran de connexion ou fenêtre « Code de sécurité »)
+    if (event === 'MFA_CHALLENGE_VERIFIED' && b.userId && Sync.state.needsMfa) {
+      Sync.state.needsMfa = false;
+      Sync.kick();
+    }
   },
 
   async logout() {
@@ -185,6 +194,7 @@ const Boot = {
     Store.Q = [];
     Store.rebuild(true);
     if (b) b.userId = null;
+    Mfa.reset();
     Screens.login();
   },
 

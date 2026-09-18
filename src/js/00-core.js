@@ -4,7 +4,7 @@
    ============================================================================= */
 
 const APP_VERSION = '__APP_VERSION__';
-const SCHEMA_VERSION = 1;
+const SCHEMA_VERSION = 2;
 
 const LS = {
   supa: 'p3d_supabase',

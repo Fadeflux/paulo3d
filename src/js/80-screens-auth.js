@@ -67,6 +67,12 @@ function authErrorMessage(error) {
   if (/invalid login credentials/i.test(msg) || code === 'invalid_credentials') return 'Email ou mot de passe incorrect.';
   if (/email not confirmed/i.test(msg) || code === 'email_not_confirmed') return 'Adresse pas encore confirmée : clique sur le lien reçu par email, puis reconnecte-toi.';
   if (/banned/i.test(msg) || code === 'user_banned') return 'Ce compte est bloqué.';
+  if (/invalid totp|mfa_verification_failed/i.test(`${msg} ${code}`)) return 'Code incorrect : tape le code affiché EN CE MOMENT dans ton appli (il change toutes les 30 secondes).';
+  if (code === 'mfa_challenge_expired' || /challenge.*expired/i.test(msg)) return 'Le code a expiré : réessaie avec le nouveau code.';
+  if (code === 'insufficient_aal' || /aal2 (is )?required|insufficient.*aal/i.test(msg)) return 'Par sécurité, reconnecte-toi avec ton code avant de faire ça.';
+  if (/mfa.*(not enabled|disabled)|enroll.*not enabled/i.test(`${msg} ${code}`)) return "La double authentification n'est pas activée sur le projet Supabase (Authentication → Multi-Factor → TOTP).";
+  if (code === 'too_many_enrolled_mfa_factors' || /too many enrolled/i.test(msg)) return 'Trop de codes en attente sur ce compte : retire-les dans Supabase (Authentication → Users), puis réessaie.';
+  if (/friendly name/i.test(msg) || code === 'mfa_factor_name_conflict') return 'Une activation est déjà en cours : ferme cette fenêtre et recommence.';
   if (/signups? not allowed|signup(s)? (are )?disabled/i.test(msg) || code === 'signup_disabled') return "Les inscriptions sont fermées sur ce projet (c'est voulu, pour la sécurité). Le compte se crée dans Supabase : Authentication → Users → Add user.";
   if (/email address.*not authorized/i.test(msg) || code === 'email_address_not_authorized') return "Supabase ne peut pas envoyer d'email à cette adresse (l'envoi gratuit de Supabase est réservé aux membres du projet). Le mot de passe peut être changé depuis le tableau de bord Supabase.";
   if (/should be different|same password/i.test(msg) || code === 'same_password') return "Le nouveau mot de passe doit être différent de l'ancien.";
@@ -276,6 +282,8 @@ const Screens = {
         if (relogin && Store.userId && data.user.id !== Store.userId) {
           toast('Connecté avec un autre compte : les actions en attente de l’ancien compte restent gardées pour lui.', { tone: 'warn' });
         }
+        const factorId = await Mfa.factorToVerify(backend);
+        if (factorId) return Screens.mfa({ backend, user: data.user, factorId });
         await Boot.enter(backend, data.user);
       } catch (err) {
         show(authErrorMessage(err));

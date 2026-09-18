@@ -1,6 +1,6 @@
 -- =============================================================================
 --  Paulo3D — Base de données Supabase (PostgreSQL)
---  Version du schéma : 1
+--  Version du schéma : 2
 -- -----------------------------------------------------------------------------
 --  COMMENT L'INSTALLER
 --    1. Supabase > ton projet > « SQL Editor » > « New query »
@@ -35,7 +35,7 @@ returns integer
 language sql
 stable
 set search_path = ''
-as $$ select 1 $$;
+as $$ select 2 $$;
 
 create or replace function public.p3d_touch_updated_at()
 returns trigger
@@ -127,6 +127,9 @@ create table if not exists public.settings (
   created_at        timestamptz not null default now(),
   updated_at        timestamptz not null default now()
 );
+
+-- Date de la dernière sauvegarde complète (JSON) : l'appli rappelle d'en refaire une chaque mois
+alter table public.settings add column if not exists last_backup_at timestamptz;
 
 -- Machines (chacune avec son coût horaire)
 create table if not exists public.machines (
@@ -1099,6 +1102,49 @@ begin
 end
 $$;
 
+-- Double authentification (facultative, activée dans l'appli : Paramètres → Double authentification).
+-- Pour un compte qui a activé un code, toute lecture ou écriture exige une session validée par le
+-- mot de passe ET le code (niveau « aal2 »). Erreur explicite plutôt qu'un résultat vide : l'appli sait
+-- qu'il faut demander le code, et ne croit jamais les données effacées.
+-- La fonction est dans un schéma privé, que l'API de Supabase n'expose pas (personne ne peut l'appeler).
+create schema if not exists p3d_private;
+revoke all on schema p3d_private from public;
+grant usage on schema p3d_private to authenticated;
+
+create or replace function p3d_private.mfa_ok()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if coalesce((select auth.jwt()) ->> 'aal', 'aal1') <> 'aal2'
+     and exists (select 1 from auth.mfa_factors f
+                 where f.user_id = (select auth.uid()) and f.status = 'verified') then
+    raise exception using errcode = '42501', message = 'Code de double authentification requis.', hint = 'P3D2F';
+  end if;
+  return true;
+end
+$$;
+
+revoke execute on function p3d_private.mfa_ok() from public;
+grant execute on function p3d_private.mfa_ok() to authenticated;
+
+do $$
+declare
+  t text;
+begin
+  foreach t in array array['settings', 'machines', 'spools', 'templates', 'productions', 'spool_movements',
+                           'production_stock', 'stock_adjustments', 'sales', 'sale_items', 'sale_allocations']
+  loop
+    execute format('drop policy if exists p3d_mfa on public.%I', t);
+    execute format('create policy p3d_mfa on public.%I as restrictive for all to authenticated '
+                   'using ((select p3d_private.mfa_ok())) with check ((select p3d_private.mfa_ok()))', t);
+  end loop;
+end
+$$;
+
 -- Registre des suppressions : rempli uniquement par la base (déclencheur), lecture seule pour les comptes
 alter table public.deleted_rows enable row level security;
 drop policy if exists p3d_deleted_select on public.deleted_rows;
@@ -1107,6 +1153,9 @@ create policy p3d_deleted_select on public.deleted_rows for select to authentica
 drop policy if exists p3d_deleted_insert on public.deleted_rows;
 revoke all on table public.deleted_rows from anon, authenticated;
 grant select on table public.deleted_rows to authenticated;
+drop policy if exists p3d_mfa on public.deleted_rows;
+create policy p3d_mfa on public.deleted_rows as restrictive for select to authenticated
+  using ((select p3d_private.mfa_ok()));
 
 grant usage on schema public to authenticated;
 
@@ -1173,4 +1222,21 @@ begin
 end
 $$;
 
--- Fin du script. Vérification rapide : « select public.p3d_version(); » doit renvoyer 1.
+-- -----------------------------------------------------------------------------
+-- 7. Signe de vie (voir .github/workflows/veille-supabase.yml)
+--    Un projet Supabase gratuit sans aucune requête pendant 7 jours est mis en pause : l'appli ne
+--    marcherait plus jusqu'à un clic « Restore ». Deux fois par semaine, GitHub appelle cette fonction.
+--    Elle ne lit ni n'écrit AUCUNE donnée : c'est la seule fonction appelable sans compte.
+-- -----------------------------------------------------------------------------
+
+create or replace function public.p3d_ping()
+returns boolean
+language sql
+stable
+set search_path = ''
+as $$ select true $$;
+
+revoke execute on function public.p3d_ping() from public;
+grant execute on function public.p3d_ping() to anon, authenticated;
+
+-- Fin du script. Vérification rapide : « select public.p3d_version(); » doit renvoyer 2.

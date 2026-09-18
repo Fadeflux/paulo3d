@@ -566,6 +566,9 @@ function renderBanner() {
   if (Sync.state.needsLogin) {
     items.push(html`<div class="flex items-center gap-2 bg-rose-500/10 px-4 py-2 text-[12px] text-rose-200">${icon('KeyRound', 'w-4 h-4 shrink-0')}<span>Ta session a expiré : reconnecte-toi pour envoyer les actions en attente (elles sont gardées).</span><button data-action="relogin" class="hit ml-auto shrink-0 font-semibold underline">Se reconnecter</button></div>`);
   }
+  if (Sync.state.needsMfa) {
+    items.push(html`<div class="flex items-center gap-2 bg-rose-500/10 px-4 py-2 text-[12px] text-rose-200">${icon('ShieldCheck', 'w-4 h-4 shrink-0')}<span>Double authentification : tape ton code pour reprendre la synchronisation (tes actions sont gardées).</span><button data-action="mfa-code" class="hit ml-auto shrink-0 font-semibold underline">Entrer le code</button></div>`);
+  }
   if (Sync.state.schemaVersion !== null && Sync.state.schemaVersion < SCHEMA_VERSION) {
     items.push(html`<div class="flex items-center gap-2 bg-amber-400/10 px-4 py-2 text-[12px] text-amber-200">${icon('Database', 'w-4 h-4 shrink-0')}<span>La base Supabase n'est pas à jour : relance le script SQL fourni.</span></div>`);
   }
@@ -670,16 +673,17 @@ Actions.quick = () => {
 };
 
 /* ---------- téléchargement / partage de fichiers ---------- */
+// Renvoie false si la personne a annulé (menu de partage du téléphone fermé sans choisir)
 async function saveFile(filename, content, mime) {
   const blob = new Blob([content], { type: mime });
   try {
     const file = new File([blob], filename, { type: mime });
     if (navigator.canShare && navigator.canShare({ files: [file] }) && /iphone|ipad|android/i.test(navigator.userAgent)) {
       await navigator.share({ files: [file], title: filename });
-      return;
+      return true;
     }
   } catch (e) {
-    if (e && e.name === 'AbortError') return;
+    if (e && e.name === 'AbortError') return false;
   }
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
@@ -689,4 +693,5 @@ async function saveFile(filename, content, mime) {
   a.click();
   a.remove();
   setTimeout(() => URL.revokeObjectURL(url), 4000);
+  return true;
 }

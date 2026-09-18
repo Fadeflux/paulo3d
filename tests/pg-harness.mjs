@@ -37,11 +37,11 @@ export async function startPostgres({ port = 54329, dir } = {}) {
 }
 
 // Exécute fn dans une transaction « comme PostgREST » : rôle + jeton JWT simulé.
-export async function asUser(client, uid, fn, { role = 'authenticated' } = {}) {
+export async function asUser(client, uid, fn, { role = 'authenticated', aal } = {}) {
   await client.query('begin');
   try {
     if (uid) {
-      await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: uid, role })]);
+      await client.query("select set_config('request.jwt.claims', $1, true)", [JSON.stringify({ sub: uid, role, ...(aal ? { aal } : {}) })]);
     }
     await client.query(`set local role ${role}`);
     const out = await fn(client);

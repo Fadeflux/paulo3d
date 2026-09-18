@@ -4,6 +4,7 @@
 //   - Authentification minimale (email + mot de passe, jetons JWT) derrière /auth/v1
 //   - Pas de temps réel : l'appli doit s'en passer (relecture périodique)
 //   - /__dev/offline?on=1 simule une coupure réseau des requêtes de données
+//   - Double authentification (TOTP) comme Supabase ; /__dev/totp?factor=<id> donne le code du moment
 // Usage : node tools/dev-supabase.mjs   (URL http://127.0.0.1:54321, clé anon affichée au démarrage)
 import http from 'node:http';
 import crypto from 'node:crypto';
@@ -61,22 +62,54 @@ const rest = spawn(path.join(ROOT, '.dev', 'tools', 'postgrest.exe'), [cfgPath],
 });
 rest.on('exit', (code) => console.error(`PostgREST s'est arrêté (code ${code})`));
 
-const sessions = new Map();
+const sessions = new Map(); // jeton de rafraîchissement → { user, aal, amr }
+const challenges = new Map();
 let offline = false;
 let expireNext = false;
 let revokedBefore = 0;
 
-function makeSession(user) {
+// Double authentification (TOTP, RFC 6238 : SHA-1, 30 s, 6 chiffres), comme Supabase et Google Authenticator
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32(buf) {
+  let bits = '';
+  for (const b of buf) bits += b.toString(2).padStart(8, '0');
+  let out = '';
+  for (let i = 0; i + 5 <= bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5), 2)];
+  return out;
+}
+function unbase32(s) {
+  let bits = '';
+  for (const ch of String(s).replace(/=+$/, '').toUpperCase()) bits += B32.indexOf(ch).toString(2).padStart(5, '0');
+  const out = [];
+  for (let i = 0; i + 8 <= bits.length; i += 8) out.push(parseInt(bits.slice(i, i + 8), 2));
+  return Buffer.from(out);
+}
+function totp(secret, step = Math.floor(Date.now() / 30000)) {
+  const msg = Buffer.alloc(8);
+  msg.writeBigUInt64BE(BigInt(step));
+  const h = crypto.createHmac('sha1', unbase32(secret)).update(msg).digest();
+  const o = h[h.length - 1] & 15;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1000000).padStart(6, '0');
+}
+const totpOk = (secret, code) => [-1, 0, 1].some((d) => totp(secret, Math.floor(Date.now() / 30000) + d) === String(code));
+
+async function userObject(user) {
+  const factors = (await pg.query('select id, friendly_name, factor_type, status, created_at, updated_at from auth.mfa_factors where user_id = $1 order by created_at', [user.id])).rows;
+  return {
+    id: user.id, aud: 'authenticated', role: 'authenticated', email: user.email, email_confirmed_at: new Date().toISOString(),
+    app_metadata: { provider: 'email' }, user_metadata: {}, identities: [], factors, created_at: new Date().toISOString(), updated_at: new Date().toISOString(),
+  };
+}
+
+async function makeSession(user, aal = 'aal1', methods = ['password']) {
   const now = Math.floor(Date.now() / 1000);
   const ttl = expireNext ? 5 : 3600;
   expireNext = false;
-  const access = sign({ sub: user.id, email: user.email, role: 'authenticated', aud: 'authenticated', iat: now, exp: now + ttl, session_id: crypto.randomUUID() });
+  const amr = methods.map((method) => ({ method, timestamp: now }));
+  const access = sign({ sub: user.id, email: user.email, role: 'authenticated', aud: 'authenticated', aal, amr, iat: now, exp: now + ttl, session_id: crypto.randomUUID() });
   const refresh = crypto.randomBytes(24).toString('hex');
-  sessions.set(refresh, user);
-  return {
-    access_token: access, token_type: 'bearer', expires_in: ttl, expires_at: now + ttl, refresh_token: refresh,
-    user: { id: user.id, aud: 'authenticated', role: 'authenticated', email: user.email, email_confirmed_at: new Date().toISOString(), app_metadata: { provider: 'email' }, user_metadata: {}, identities: [], created_at: new Date().toISOString(), updated_at: new Date().toISOString() },
-  };
+  sessions.set(refresh, { user: { id: user.id, email: user.email }, aal, methods });
+  return { access_token: access, token_type: 'bearer', expires_in: ttl, expires_at: now + ttl, refresh_token: refresh, user: await userObject(user) };
 }
 
 const cors = {
@@ -112,6 +145,10 @@ const server = http.createServer(async (req, res) => {
       expireNext = true;
       return json(res, 200, { expireNext });
     }
+    if (url.pathname === '/__dev/totp') {
+      const f = (await pg.query('select secret from auth.mfa_factors where id = $1', [url.searchParams.get('factor')])).rows[0];
+      return f ? json(res, 200, { code: totp(f.secret) }) : json(res, 404, { message: 'facteur inconnu' });
+    }
     if (url.pathname === '/__dev/revoke') {
       // révoque toutes les sessions : jetons de rafraîchissement invalides, jetons d'accès refusés
       sessions.clear();
@@ -130,7 +167,7 @@ const server = http.createServer(async (req, res) => {
         const id = crypto.randomUUID();
         await pg.query('insert into auth.users (id, email) values ($1, $2)', [id, email]);
         await pg.query('insert into auth.dev_passwords (user_id, hash) values ($1, $2)', [id, hash(body.password)]);
-        return json(res, 200, makeSession({ id, email }));
+        return json(res, 200, await makeSession({ id, email }));
       }
       if (route === 'token') {
         const grant = url.searchParams.get('grant_type');
@@ -138,20 +175,55 @@ const server = http.createServer(async (req, res) => {
           const email = String(body.email || '').toLowerCase();
           const row = (await pg.query('select u.id, u.email, p.hash from auth.users u join auth.dev_passwords p on p.user_id = u.id where u.email = $1', [email])).rows[0];
           if (!row || row.hash !== hash(body.password)) return json(res, 400, { code: 400, error_code: 'invalid_credentials', msg: 'Invalid login credentials' });
-          return json(res, 200, makeSession(row));
+          return json(res, 200, await makeSession(row));
         }
         if (grant === 'refresh_token') {
-          const user = sessions.get(body.refresh_token);
-          if (!user) return json(res, 400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token: Refresh Token Not Found' });
+          const s = sessions.get(body.refresh_token);
+          if (!s) return json(res, 400, { code: 400, error_code: 'refresh_token_not_found', msg: 'Invalid Refresh Token: Refresh Token Not Found' });
           sessions.delete(body.refresh_token);
-          return json(res, 200, makeSession(user));
+          // le niveau de la session (mot de passe seul, ou mot de passe + code) est conservé
+          return json(res, 200, await makeSession(s.user, s.aal, s.methods));
         }
       }
       if (route === 'user') {
         const p = verify(String(req.headers.authorization || '').replace(/^Bearer /i, ''));
         if (!p || p.role !== 'authenticated') return json(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' });
-        if (req.method === 'PUT') return json(res, 200, { id: p.sub, email: p.email, aud: 'authenticated', role: 'authenticated' });
-        return json(res, 200, { id: p.sub, email: p.email, aud: 'authenticated', role: 'authenticated', app_metadata: {}, user_metadata: {} });
+        if (req.method === 'PUT') return json(res, 200, await userObject({ id: p.sub, email: p.email }));
+        return json(res, 200, await userObject({ id: p.sub, email: p.email }));
+      }
+      if (route === 'factors' || route.startsWith('factors/')) {
+        const p = verify(String(req.headers.authorization || '').replace(/^Bearer /i, ''));
+        if (!p || p.role !== 'authenticated') return json(res, 401, { code: 401, error_code: 'bad_jwt', msg: 'invalid JWT' });
+        const parts = route.split('/');
+        if (parts.length === 1 && req.method === 'POST') {
+          const taken = (await pg.query('select 1 from auth.mfa_factors where user_id = $1 and friendly_name = $2', [p.sub, body.friendly_name || ''])).rows.length;
+          if (taken) return json(res, 422, { code: 422, error_code: 'mfa_factor_name_conflict', msg: `A factor with the friendly name "${body.friendly_name}" for this user already exists` });
+          const id = crypto.randomUUID();
+          const secret = base32(crypto.randomBytes(20));
+          await pg.query("insert into auth.mfa_factors (id, user_id, friendly_name, factor_type, status, secret) values ($1, $2, $3, 'totp', 'unverified', $4)", [id, p.sub, body.friendly_name || null, secret]);
+          // SVG brut comme Supabase (avec des # : l'appli doit l'encoder correctement)
+          const qr = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 10 10"><rect width="10" height="10" fill="#ffffff"/><rect x="2" y="2" width="6" height="6" fill="#000000"/></svg>';
+          return json(res, 200, { id, type: 'totp', friendly_name: body.friendly_name, totp: { qr_code: qr, secret, uri: `otpauth://totp/Paulo3D:${encodeURIComponent(p.email)}?secret=${secret}&issuer=Paulo3D` } });
+        }
+        const f = (await pg.query('select * from auth.mfa_factors where id = $1 and user_id = $2', [parts[1], p.sub])).rows[0];
+        if (!f) return json(res, 404, { code: 404, error_code: 'mfa_factor_not_found', msg: 'Factor not found' });
+        if (parts[2] === 'challenge' && req.method === 'POST') {
+          const id = crypto.randomUUID();
+          challenges.set(id, f.id);
+          return json(res, 200, { id, type: 'totp', expires_at: Math.floor(Date.now() / 1000) + 300 });
+        }
+        if (parts[2] === 'verify' && req.method === 'POST') {
+          if (challenges.get(body.challenge_id) !== f.id) return json(res, 422, { code: 422, error_code: 'mfa_challenge_expired', msg: 'MFA challenge has expired' });
+          if (!totpOk(f.secret, body.code)) return json(res, 422, { code: 422, error_code: 'mfa_verification_failed', msg: 'Invalid TOTP code entered' });
+          challenges.delete(body.challenge_id);
+          await pg.query("update auth.mfa_factors set status = 'verified', updated_at = now() where id = $1", [f.id]);
+          return json(res, 200, await makeSession({ id: p.sub, email: p.email }, 'aal2', ['password', 'totp']));
+        }
+        if (parts.length === 2 && req.method === 'DELETE') {
+          if (f.status === 'verified' && p.aal !== 'aal2') return json(res, 422, { code: 422, error_code: 'insufficient_aal', msg: 'AAL2 required to unenroll verified factor' });
+          await pg.query('delete from auth.mfa_factors where id = $1', [f.id]);
+          return json(res, 200, { id: f.id });
+        }
       }
       if (route === 'logout') {
         res.writeHead(204, cors);

@@ -54,6 +54,8 @@ VIEWS.parametres = {
             ${pendingOps ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${pendingOps >= 2 ? `${pendingOps} actions pas encore envoyées : reste connecté jusqu'à ce qu'elles partent.` : "1 action pas encore envoyée : reste connecté jusqu'à ce qu'elle parte."}</p>` : ''}`,
             html`${btn('Changer le mot de passe', { size: 'sm', variant: 'ghost', icon: 'KeyRound', action: 'change-password' })}${btn('Se déconnecter', { size: 'sm', variant: 'danger', icon: 'LogOut', action: 'logout' })}`)}
 
+          ${isDemo ? '' : mfaSection()}
+
           ${settingsSection('s-costs', 'Zap', "Coûts de l'atelier", 'Utilisés pour tous les calculs de coût de revient', html`
             ${field('Nom de l’atelier', inputText('workshop_name', st.workshop_name, { maxlength: 80 }))}
             <div class="grid grid-cols-2 gap-3">
@@ -112,8 +114,9 @@ VIEWS.parametres = {
               <div class="flex justify-between"><span class="text-slate-400">Actions en attente d'envoi</span><span class="text-slate-200">${fmtNum(Store.Q.filter((o) => o.status !== 'failed').length)}</span></div>
               <div class="flex justify-between"><span class="text-slate-400">Actions refusées</span><span class="${Store.Q.some((o) => o.status === 'failed') ? 'text-rose-300' : 'text-slate-200'}">${fmtNum(Store.Q.filter((o) => o.status === 'failed').length)}</span></div>
               <div class="flex justify-between"><span class="text-slate-400">Dernière synchronisation</span><span class="text-slate-200">${Sync.state.lastPullAt ? fmtRelative(Sync.state.lastPullAt) : '—'}</span></div>
+              ${Sync.backend && Sync.backend.kind === 'supabase' ? html`<div class="flex justify-between"><span class="text-slate-400">Dernière sauvegarde complète</span><span class="${backupStatus(Store.V).due ? 'text-amber-300' : 'text-slate-200'}">${settingsOf(Store.V).last_backup_at ? fmtRelative(settingsOf(Store.V).last_backup_at) : 'jamais'}</span></div>` : ''}
             </div>
-            <p class="text-[12px] text-slate-500">Conseil : exporte une sauvegarde JSON de temps en temps (l'offre gratuite de Supabase ne garde pas d'historique restaurable).</p>`,
+            <p class="text-[12px] text-slate-500">L'offre gratuite de Supabase ne garde aucune copie restaurable : télécharge une sauvegarde complète (JSON) une fois par mois, l'appli te le rappelle.</p>`,
             html`${btn('Vider cet appareil', { size: 'sm', variant: 'ghost', icon: 'Eraser', action: 'clear-local' })}${btn('Synchro', { size: 'sm', variant: 'ghost', icon: 'RefreshCw', action: 'sync-panel' })}${btn('Exporter', { size: 'sm', variant: 'primary', icon: 'Download', action: 'export-open' })}`)}
 
           ${settingsSection('s-install', 'Smartphone', "Installer l'application", 'Icône sur l’écran d’accueil, plein écran, marche hors-ligne', html`

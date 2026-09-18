@@ -25,6 +25,7 @@ const DEFAULT_SETTINGS = {
   spool_low_g: 300,
   spool_critical_g: 150,
   sales_channels: DEFAULT_CHANNELS,
+  last_backup_at: null, // dernière sauvegarde complète (JSON), partagée entre appareils
 };
 
 const SETTINGS_FIELDS = Object.keys(DEFAULT_SETTINGS);
@@ -79,6 +80,18 @@ function settingsOf(V) {
 }
 
 const valuesOf = (map) => (map ? [...map.values()] : []);
+
+/* ---------- sauvegardes ---------- */
+// L'offre gratuite de Supabase ne garde aucune copie restaurable : l'appli rappelle chaque mois
+// de télécharger une sauvegarde complète (seulement s'il y a des données à perdre).
+const BACKUP_EVERY_DAYS = 30;
+function backupStatus(V, now = Date.now()) {
+  const last = settingsOf(V).last_backup_at || null;
+  const t = last ? time(last) : 0;
+  const days = t ? Math.max(0, Math.floor((now - t) / 86400000)) : null;
+  const hasData = ['spools', 'templates', 'productions', 'sales'].some((k) => V[k] && V[k].size > 0);
+  return { last, days, due: hasData && (days === null || days >= BACKUP_EVERY_DAYS) };
+}
 
 /* ---------- machines ---------- */
 function activeMachines(V) {

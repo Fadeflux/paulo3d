@@ -22,7 +22,7 @@ export function loadApp() {
     'normalizeMaterial', 'classifyError', 'friendlyError', 'normalizeSupaUrl', 'projectRefFromUrl', 'keyProblem', 'b64urlEncode', 'b64urlDecode',
     'valuesOf', 'firstRow', 'pick', 'SPOOL_FIELDS', 'TEMPLATE_FIELDS', 'MACHINE_FIELDS', 'SETTINGS_FIELDS', 'REMOTE', 'ICONS', 'APP_VERSION',
     'tsMicros', 'normalizeRow', 'attrList', 'AUTH_CODES', 'inputNum', 'plural', 'exportCsvJournal',
-    'passwordProblem', 'authErrorMessage', 'PASSWORD_MIN', 'weighProblem', 'isPieceCount',
+    'passwordProblem', 'authErrorMessage', 'PASSWORD_MIN', 'weighProblem', 'isPieceCount', 'backupStatus',
   ];
   vm.runInContext(`globalThis.__app = { ${names.join(', ')} };`, ctx);
   return ctx.__app;

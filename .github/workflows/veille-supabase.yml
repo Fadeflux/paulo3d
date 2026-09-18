@@ -1,0 +1,54 @@
+# Veille Supabase : empêche la mise en pause du projet gratuit.
+# Un projet Supabase gratuit sans aucune requête pendant 7 jours est mis en pause : l'appli ne
+# marcherait plus jusqu'à un clic « Restore » dans le tableau de bord. Deux signes de vie par
+# semaine suffisent. Si la base ne répond pas (déjà en pause, clé changée…), la tâche échoue et
+# GitHub envoie un email au propriétaire du dépôt.
+#
+# Réglages (dépôt → Settings → Secrets and variables → Actions) :
+#   SUPABASE_URL  adresse du projet (https://xxxx.supabase.co)
+#   SUPABASE_KEY  clé publique (publishable) — jamais la clé secrète
+name: Veille Supabase (anti-pause)
+
+on:
+  schedule:
+    - cron: '17 6 * * 1,4' # lundi et jeudi, 6 h 17 UTC
+  workflow_dispatch:
+
+permissions:
+  actions: write # réactiver ce planning : GitHub coupe les plannings d'un dépôt sans commit depuis 60 jours
+  contents: read
+
+jobs:
+  signe-de-vie:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Signe de vie à la base (ne lit ni n'écrit aucune donnée)
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_KEY: ${{ secrets.SUPABASE_KEY }}
+        run: |
+          set -u
+          if [ -z "$SUPABASE_URL" ] || [ -z "$SUPABASE_KEY" ]; then
+            echo "::error::Secrets SUPABASE_URL et SUPABASE_KEY absents (Settings → Secrets and variables → Actions)."
+            exit 1
+          fi
+          for i in 1 2 3; do
+            code=$(curl -sS -o reponse.txt -w '%{http_code}' --max-time 30 -X POST \
+              "$SUPABASE_URL/rest/v1/rpc/p3d_ping" \
+              -H "apikey: $SUPABASE_KEY" -H 'Content-Type: application/json' -d '{}' || echo 000)
+            if [ "$code" = "200" ] && grep -q 'true' reponse.txt; then
+              echo "Base Supabase active."
+              exit 0
+            fi
+            echo "Tentative $i : HTTP $code $(head -c 200 reponse.txt 2>/dev/null)"
+            sleep 20
+          done
+          echo "::error::La base Supabase ne répond pas. Projet en pause ? Ouvre le tableau de bord Supabase et clique « Restore »."
+          exit 1
+
+      - name: Garder ce planning actif
+        if: always()
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh api -X PUT "repos/${{ github.repository }}/actions/workflows/veille-supabase.yml/enable" || true

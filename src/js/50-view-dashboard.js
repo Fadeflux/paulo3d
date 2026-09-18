@@ -112,6 +112,7 @@ VIEWS.dashboard = {
 
     return html`
       ${pageHeader('Tableau de bord', `${st.workshop_name} · ${range.label}`, segmented('period', PERIODS, period))}
+      ${backupReminder(V)}
       ${fresh ? onboardingCard(V) : ''}
 
       <div class="grid gap-3 lg:grid-cols-3">
@@ -344,6 +345,35 @@ Actions['hist-search'] = debounce((el) => {
   App.render();
 }, 200);
 
+/* ---------- sauvegarde complète ---------- */
+const BACKUP_SNOOZE = 'p3d_backup_snooze';
+function backupReminder(V) {
+  if (!Sync.backend || Sync.backend.kind !== 'supabase') return '';
+  const b = backupStatus(V);
+  if (!b.due || Date.now() < toNum(lsGet(BACKUP_SNOOZE, 0))) return '';
+  const when = b.days === null ? 'Aucune sauvegarde pour l’instant' : `Dernière sauvegarde il y a ${plural(b.days, 'jour', 'jours')}`;
+  return html`<div class="card mb-3 flex flex-wrap items-center gap-3 border-amber-400/25 p-4">
+    <span class="grid h-10 w-10 shrink-0 place-items-center rounded-xl bg-amber-400/10 text-amber-300">${icon('DatabaseBackup', 'w-5 h-5')}</span>
+    <div class="min-w-0 flex-1"><div class="text-sm font-semibold text-slate-100">Pense à sauvegarder tes données</div>
+      <div class="text-[12px] text-slate-400">${when}. Supabase gratuit ne garde aucune copie : garde un fichier chez toi, une fois par mois.</div></div>
+    <div class="flex gap-2">${btn('Plus tard', { size: 'sm', variant: 'ghost', action: 'backup-later' })}${btn('Sauvegarder', { size: 'sm', variant: 'primary', icon: 'Download', action: 'backup-now' })}</div>
+  </div>`;
+}
+async function downloadBackup() {
+  const stampDay = toLocalInput().slice(0, 10); // date LOCALE : après minuit en France, pas celle de la veille (UTC)
+  const saved = await saveFile(`paulo3d-sauvegarde-${stampDay}.json`, exportJson(Store.V), 'application/json');
+  if (!saved) return;
+  if (Sync.backend && Sync.backend.kind === 'supabase') {
+    await Sync.enqueue('settings.save', { last_backup_at: new Date().toISOString() }, { wait: 0, silent: true });
+  }
+  toast('Sauvegarde téléchargée : range-la en lieu sûr (ordinateur, clé USB, Drive…).', { tone: 'ok', title: 'Sauvegarde' });
+}
+Actions['backup-now'] = () => downloadBackup();
+Actions['backup-later'] = () => {
+  lsSet(BACKUP_SNOOZE, Date.now() + 7 * 86400000);
+  App.render();
+};
+
 Actions['export-open'] = () => {
   const stampDay = toLocalInput().slice(0, 10); // date LOCALE : après minuit en France, pas celle de la veille (UTC)
   const opt = (ic, title, text, action) => html`<button data-action="${action}" class="flex w-full items-center gap-3 rounded-2xl border border-white/[0.06] bg-ink-850 p-3.5 text-left transition hover:border-neon/30">
@@ -362,7 +392,7 @@ Actions['export-open'] = () => {
       ${Store.V.pendingCount ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${Store.V.pendingCount >= 2 ? `${Store.V.pendingCount} actions pas encore envoyées sont incluses` : '1 action pas encore envoyée est incluse'} dans l'export.</p>` : ''}
     </div>`,
     actions: {
-      'x-json': () => saveFile(`paulo3d-sauvegarde-${stampDay}.json`, exportJson(Store.V), 'application/json'),
+      'x-json': () => downloadBackup(),
       'x-journal': () => saveFile(`paulo3d-journal-${stampDay}.csv`, exportCsvJournal(Store.V), 'text/csv;charset=utf-8'),
       'x-sales': () => saveFile(`paulo3d-ventes-${stampDay}.csv`, exportCsvSales(Store.V), 'text/csv;charset=utf-8'),
       'x-prod': () => saveFile(`paulo3d-productions-${stampDay}.csv`, exportCsvProductions(Store.V), 'text/csv;charset=utf-8'),

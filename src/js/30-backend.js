@@ -66,6 +66,8 @@ function classifyError(e) {
   const code = String((e && e.code) || '');
   if (e && e.name === 'AbortError') return 'network';
   if (!status) return 'network';
+  // double authentification activée, session sans le code (mot de passe seul) : demander le code
+  if (e && e.hint === 'P3D2F') return 'mfa';
   if (status === 401 || AUTH_CODES.includes(code)) return 'auth';
   if (code === 'PGRST202' || code === 'PGRST205' || code === '42P01' || code === '42883' || code === 'PGRST204') return 'schema';
   if (status >= 500 || status === 408 || status === 429 || code === '57014') return 'network';

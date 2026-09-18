@@ -39,7 +39,7 @@ test('le script s’exécute, puis se relance sans erreur ni perte', async () =>
   assert.equal(r.n, 1);
   await asUser(admin, A, (c) => c.query("delete from public.spools where brand = 'Témoin'"));
   const v = await asUser(admin, A, (c) => one(c, 'select public.p3d_version() as v'));
-  assert.equal(v.v, 1);
+  assert.equal(v.v, 2);
 });
 
 test('publication temps réel : les 11 tables', async () => {
@@ -562,6 +562,23 @@ test('pesée : refusée au-delà de 5 % au-dessus du poids initial (même règle
   });
 });
 
+test('signe de vie (anti-pause) : appelable sans compte, ne renvoie aucune donnée', async () => {
+  const r = await asUser(admin, null, (c) => one(c, 'select public.p3d_ping() as ok'), { role: 'anon' });
+  assert.equal(r.ok, true);
+  const def = await one(admin, "select pg_get_functiondef('public.p3d_ping()'::regprocedure) as d, p.prosecdef from pg_proc p where p.oid = 'public.p3d_ping()'::regprocedure");
+  assert.equal(def.prosecdef, false, 'droits de l’appelant (anon), jamais ceux du propriétaire');
+  assert.ok(!/from\s+public\./i.test(def.d), 'ne lit aucune table');
+});
+
+test('réglages : date de dernière sauvegarde enregistrée par le compte', async () => {
+  const at = '2026-09-18T20:00:00.000Z';
+  const r = await asUser(admin, A, async (c) => {
+    await c.query('update public.settings set last_backup_at = $1', [at]);
+    return one(c, 'select last_backup_at from public.settings');
+  });
+  assert.equal(new Date(r.last_backup_at).toISOString(), at);
+});
+
 test('Security Advisor : aucune fonction « security definer » appelable par l’API, rien d’ouvert sans compte', async () => {
   // les droits que Supabase donne par défaut à tout nouvel objet (imités dans supabase-stubs.sql) sont refermés
   const defs = (await admin.query(`
@@ -578,7 +595,7 @@ test('Security Advisor : aucune fonction « security definer » appelable par l�
   const anonFns = (await admin.query(`
     select p.oid::regprocedure::text as fn from pg_proc p join pg_namespace n on n.oid = p.pronamespace
     where n.nspname = 'public' and has_function_privilege('anon', p.oid, 'execute')`)).rows;
-  assert.deepEqual(anonFns.map((r) => r.fn), [], 'aucune fonction appelable sans compte');
+  assert.deepEqual(anonFns.map((r) => r.fn), ['p3d_ping()'], 'seul le signe de vie (qui ne lit rien) est appelable sans compte');
   const anonTables = (await admin.query(`
     select c.relname from pg_class c join pg_namespace n on n.oid = c.relnamespace
     where n.nspname = 'public' and c.relkind in ('r', 'v', 'm')
@@ -597,4 +614,40 @@ test('Security Advisor : aucune fonction « security definer » appelable par l�
     return one(c, "select count(*)::int as n from public.deleted_rows where table_name = 'machines' and row_id = $1", [m.id]);
   });
   assert.equal(gone.n, 1);
+});
+
+test('double authentification : code exigé pour un compte qui l’a activée (erreur claire, jamais un résultat vide)', async () => {
+  // B a des données (une bobine, une machine supprimée) : sans données, Postgres ne consulte même pas la règle
+  // et renvoie une liste vide, ce qui est la vérité ; avec des données, c'est un refus explicite
+  await asUser(admin, B, async (c) => {
+    await c.query("insert into public.spools (brand, material, color_name, color_hex, price, initial_weight_g) values ('B', 'PLA', 'Vert', '#22C55E', 20, 1000)");
+    const m = await one(c, "insert into public.machines (name) values ('B1') returning id");
+    await c.query('delete from public.machines where id = $1', [m.id]);
+  });
+  const F = randomUUID();
+  await admin.query("insert into auth.mfa_factors (id, user_id, friendly_name, status) values ($1, $2, 'Paulo3D', 'verified')", [F, B]);
+  const refus = (sql, aal) => asUser(admin, B, (c) => c.query(sql), aal ? { aal } : {}).then(() => null, (e) => e);
+  try {
+    // session « mot de passe seul » (aal1) : refus explicite, en lecture comme en écriture
+    for (const sql of ['select * from public.spools', 'select * from public.deleted_rows', "insert into public.machines (name) values ('X')"]) {
+      const err = await refus(sql, 'aal1');
+      assert.ok(err, `refusé : ${sql}`);
+      assert.equal(err.code, '42501');
+      assert.equal(err.hint, 'P3D2F');
+    }
+    assert.equal((await refus('select 1 from public.spools')).hint, 'P3D2F', 'jeton sans niveau = mot de passe seul');
+    const viaRpc = await asUser(admin, B, (c) => rpc(c, 'p3d_weigh_spool', { id: randomUUID(), spool_id: randomUUID(), measured_g: 1 }), { aal: 'aal1' }).then(() => null, (e) => e);
+    assert.equal(viaRpc && viaRpc.hint, 'P3D2F', 'les actions (RPC) aussi');
+    // mot de passe + code (aal2) : accès normal
+    const r = await asUser(admin, B, (c) => one(c, 'select count(*)::int as n from public.spools'), { aal: 'aal2' });
+    assert.equal(typeof r.n, 'number');
+    // activation commencée mais jamais confirmée : aucun code exigé
+    await admin.query("update auth.mfa_factors set status = 'unverified' where id = $1", [F]);
+    assert.equal(await refus('select * from public.spools', 'aal1'), null);
+  } finally {
+    await admin.query('delete from auth.mfa_factors where id = $1', [F]);
+  }
+  assert.equal(await asUser(admin, A, (c) => c.query('select * from public.spools'), { aal: 'aal1' }).then(() => null, (e) => e), null, 'compte sans code : rien ne change');
+  const priv = await one(admin, "select has_schema_privilege('anon', 'p3d_private', 'usage') as anon_usage, has_function_privilege('anon', 'p3d_private.mfa_ok()', 'execute') as anon_exec");
+  assert.deepEqual(priv, { anon_usage: false, anon_exec: false }, 'contrôle hors de portée de l’API');
 });

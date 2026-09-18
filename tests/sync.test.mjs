@@ -278,3 +278,44 @@ test('démo : un échec pendant le remplissage des exemples ne bloque pas le dé
   assert.equal(ls.get('p3d_demo_seeded'), undefined, 'pas marqué « rempli » : réessayé à la prochaine ouverture si la démo est vide');
   assert.ok(toasts.some((t) => t.tone === 'warn' && /exemples/.test(t.message)));
 });
+
+const mfaErr = () => Object.assign(httpErr(403, '42501', 'Code de double authentification requis.'), { hint: 'P3D2F' });
+
+test('double authentification réclamée par la base : rien n’est refusé, tout attend le code, puis part une seule fois', async () => {
+  const { app, Store, Sync } = boot();
+  resetStore(Store, app);
+  let codeOk = false;
+  let refreshes = 0;
+  const backend = fakeBackend(() => {
+    if (!codeOk) throw mfaErr();
+    return { sales: [] };
+  }, { refreshAuth: async () => { refreshes++; return 'ok'; } });
+  Sync.backend = backend;
+  const r = await Sync.enqueue('sale.record', salePayload(app), { wait: 300 });
+  assert.equal(r.state, 'queued', 'gardée, jamais refusée');
+  assert.equal(Sync.state.needsMfa, true);
+  assert.equal(Sync.summary().label, 'Code requis');
+  assert.equal(Store.Q[0].status, 'pending');
+  assert.equal(refreshes, 0, 'pas de rafraîchissement inutile : le code ne s’obtient pas ainsi');
+  await Sync.flush();
+  assert.equal(sends(backend), 1, 'rien ne part tant que le code n’est pas saisi');
+  codeOk = true;
+  Sync.state.needsMfa = false;
+  await Sync.kick();
+  await idle(Sync);
+  assert.equal(Store.Q.length, 0);
+  assert.equal(sends(backend), 2, 'envoyée une seule fois après le code');
+});
+
+test('double authentification réclamée à la relecture : la copie locale n’est jamais vidée', async () => {
+  const { app, Store, Sync } = boot();
+  resetStore(Store, app);
+  const id = app.uuid();
+  Store.S.spools.set(id, { id, owner_id: U, brand: 'B', material: 'PLA', color_name: 'Noir', color_hex: '#111111', price: 20, initial_weight_g: 1000, remaining_weight_g: 1000, archived: false, updated_at: '2026-09-18T10:00:00Z' });
+  Store.rebuild(true);
+  const backend = fakeBackend(() => ({}), { pullTable: async () => { throw mfaErr(); }, pullIds: async () => new Set() });
+  Sync.backend = backend;
+  await Sync.pull({ reconcile: true });
+  assert.equal(Sync.state.needsMfa, true);
+  assert.equal(Store.S.spools.size, 1, 'rien d’effacé localement');
+});

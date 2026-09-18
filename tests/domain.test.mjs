@@ -577,6 +577,21 @@ test('connexion : messages de Supabase traduits, aucune inscription possible dep
   assert.ok(!/\.signUp\s*\(/.test(code), 'aucun appel de création de compte dans l’appli');
 });
 
+test('sauvegarde : rappel après 30 jours, seulement s’il y a des données à perdre', () => {
+  const f = fixture();
+  const now = Date.parse('2026-09-30T12:00:00Z');
+  const empty = view(applyOps(app, [['settings.save', { ...app.DEFAULT_SETTINGS }]]));
+  assert.equal(app.backupStatus(empty, now).due, false, 'rien à sauvegarder');
+  const V0 = view(applyOps(app, f.ops));
+  deepEqual(app.backupStatus(V0, now), { last: null, days: null, due: true });
+  const recent = view(applyOps(app, [...f.ops, ['settings.save', { last_backup_at: '2026-09-20T08:00:00Z' }]]));
+  deepEqual(app.backupStatus(recent, now), { last: '2026-09-20T08:00:00Z', days: 10, due: false });
+  const old = view(applyOps(app, [...f.ops, ['settings.save', { last_backup_at: '2026-08-31T11:00:00Z' }]]));
+  assert.equal(app.backupStatus(old, now).days, 30);
+  assert.equal(app.backupStatus(old, now).due, true);
+  assert.ok(app.SETTINGS_FIELDS.includes('last_backup_at'), 'la date est partagée entre appareils (table settings)');
+});
+
 test('filtres mémorisés : jamais de liste vide sans bouton pour en sortir', () => {
   const F = app.uuid.constructor; // constructeur Function du bac à sable
   const App = new F('return App')();
