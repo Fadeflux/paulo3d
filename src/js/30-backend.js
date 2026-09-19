@@ -212,10 +212,12 @@ const REMOTE = {
     const rows = await b.exec(q.select());
     if (rows.length) return { orders: rows };
     // condition d'état non remplie (commande livrée ou annulée ailleurs entre-temps) : rien n'est
-    // écrasé, l'appareil reprend simplement l'état de la base
+    // écrasé, l'appareil reprend simplement l'état de la base.
+    // ⚠️ (19/09) … et le DIT : renvoyé comme un succès, l'écran annonçait « Commande annulée » pour
+    // une commande restée « Livrée » (et sa vente toujours comptée). `inchange` = l'état réel.
     if (Array.isArray(p.from)) {
       const cur = await b.exec(b.sb.from('orders').select().eq('id', p.id));
-      if (cur.length) return { orders: cur };
+      if (cur.length) return { orders: cur, inchange: { status: cur[0].status } };
     }
     return { orders: nothingSaved(rows, 'Cette commande', 'supprimée') };
   },

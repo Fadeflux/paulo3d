@@ -273,7 +273,7 @@ Actions['bilan-month'] = (el) => go(`#/bilan?m=${el.dataset.value}`);
 Actions['bilan-print'] = () => printSheet(reportHtml(Store.V, monthReport(Store.V, App.route.params.m)));
 Actions['bilan-pdf'] = () => {
   const r = monthReport(Store.V, App.route.params.m);
-  return sharePdf(`${SITE.id}-bilan-${r.range.ym}.pdf`, () => reportPdf(Store.V, r));
+  return sharePdf(`${SITE.id}-${ui('bilan')}-${r.range.ym}.pdf`, () => reportPdf(Store.V, r));
 };
 Actions['open-bilan'] = () => go('#/bilan');
 
@@ -398,7 +398,7 @@ Actions['labels-print'] = () => {
 Actions['labels-pdf'] = () => {
   const ids = selectedLabelIds();
   if (!ids.length || !globalThis.qrcode) return;
-  return sharePdf(`${SITE.id}-etiquettes-${dayKey(new Date().toISOString())}.pdf`, () => labelsPdf(Store.V, ids));
+  return sharePdf(`${SITE.id}-${ui('etiquettes')}-${dayKey(new Date().toISOString())}.pdf`, () => labelsPdf(Store.V, ids));
 };
 Actions['open-labels'] = (el) => {
   Labels.selected = null;

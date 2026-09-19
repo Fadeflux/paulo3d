@@ -195,7 +195,7 @@ const Sync = {
     const res = await Promise.race([done, timeout]);
     // délai écoulé : la réponse arrivera plus tard et sera annoncée comme telle
     if (res.timedOut) this.waiters.delete(op.id);
-    return { state: res.state, error: res.error, slow: res.slow, tombstoned: !!res.tombstoned, opId: op.id };
+    return { state: res.state, error: res.error, slow: res.slow, tombstoned: !!res.tombstoned, inchange: res.inchange || null, opId: op.id };
   },
 
   resolveWaiter(op, result) {
@@ -207,7 +207,7 @@ const Sync = {
     }
     if (op.silent && result.state !== 'failed') return;
     // « supprimé entre-temps sur un autre appareil » : l'action n'a rien enregistré, on ne l'annonce pas comme faite
-    if (result.state === 'confirmed' && result.tombstoned) this.skippedWhileAway++;
+    if (result.state === 'confirmed' && (result.tombstoned || result.inchange)) this.skippedWhileAway++;
     else if (result.state === 'confirmed') this.confirmedWhileAway++;
     else if (result.state === 'failed') this.failedWhileAway++;
   },
@@ -308,7 +308,7 @@ const Sync = {
           this.state.online = true;
           this.state.lastConfirmAt = new Date().toISOString();
           this.retryDelay = 0;
-          this.resolveWaiter(op, { state: 'confirmed', tombstoned: !!(bundle && bundle.tombstoned) });
+          this.resolveWaiter(op, { state: 'confirmed', tombstoned: !!(bundle && bundle.tombstoned), inchange: (bundle && bundle.inchange) || null });
           if (bundle && bundle.pullAfter) setTimeout(() => this.pull(), 50);
         }
       });

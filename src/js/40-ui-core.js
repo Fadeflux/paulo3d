@@ -231,6 +231,13 @@ function withBusy(el, result) {
 // Annonce honnête du résultat d'une action
 async function runOp(type, payload, { success = 'Enregistré' } = {}) {
   const res = await Sync.enqueue(type, payload);
+  // ⚠️ (19/09) Rien n'a changé (l'élément avait changé sur un autre appareil) : jamais un « c'est fait »
+  if (res.state === 'confirmed' && res.inchange) {
+    const st = res.inchange.status && ORDER_STATUS[res.inchange.status];
+    toast(st ? `Rien n'a été modifié : cette commande a changé sur un autre appareil entre-temps (elle est maintenant « ${st.label} »).`
+      : "Rien n'a été modifié : cet élément a changé sur un autre appareil entre-temps.", { tone: 'warn', title: 'Action ignorée' });
+    return res;
+  }
   if (res.state === 'confirmed' && res.tombstoned) {
     toast('Cet élément avait déjà été supprimé sur un autre appareil : rien n’a été enregistré.', { tone: 'warn', title: 'Action ignorée' });
     return res;

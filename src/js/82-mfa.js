@@ -53,6 +53,15 @@ const Mfa = {
   // Obligatoire et pas encore activée ? (liste lue sur le serveur ; hors-ligne : non, la base protège)
   async needsEnroll(backend) {
     if (!SITE.mfaRequired) return false;
+    // ⚠️ (19/09) D'ABORD la session gardée sur l'appareil : elle liste déjà les codes activés. Demander
+    // au serveur à chaque ouverture faisait attendre le réseau AVANT d'afficher quoi que ce soit —
+    // jusqu'à 30 s en 4G faible, pour un compte dont le code est activé depuis longtemps. Le serveur
+    // n'est interrogé que si la session ne connaît aucun code (première activation, ou activé ailleurs).
+    try {
+      const { data: s } = await backend.sb.auth.getSession();
+      const locaux = (s && s.session && s.session.user && s.session.user.factors) || [];
+      if (locaux.some((f) => f.status === 'verified' && f.factor_type === 'totp')) return false;
+    } catch { /* session illisible : on demande au serveur */ }
     try {
       const { data, error } = await backend.sb.auth.mfa.listFactors();
       if (error) return false;

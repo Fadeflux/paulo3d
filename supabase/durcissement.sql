@@ -14,6 +14,13 @@
 alter default privileges in schema public revoke all on tables from anon;
 alter default privileges in schema public revoke all on sequences from anon;
 alter default privileges in schema public revoke all on functions from anon;
+-- ⚠️ (19/09) Ne suffisait pas : PostgreSQL donne aussi le droit d'appeler toute NOUVELLE fonction à
+-- PUBLIC (donc à anon) — vérifié : une fonction créée plus tard était appelable sans compte. Ce droit
+-- est GLOBAL : un « in schema public » ne peut pas le retirer (doc PostgreSQL, ALTER DEFAULT
+-- PRIVILEGES : le réglage par schéma s'AJOUTE au réglage global). Retrait global, pour les objets créés
+-- par le rôle qui lance ce script. Les fonctions de l'appli n'en dépendent pas : schema.sql les
+-- accorde une à une (authenticated, et p3d_ping à anon).
+alter default privileges revoke execute on functions from public;
 
 -- 2. RLS automatique sur les nouvelles tables (sauf si le projet l'a déjà)
 create schema if not exists p3d_private;

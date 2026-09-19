@@ -1231,5 +1231,12 @@
  "Double authentification obligatoire : active-la pour continuer.": "Autenticação de dois fatores obrigatória: ativa-a para continuar.",
  "Protège ton compte": "Protege a tua conta",
  "Pour entrer dans {}, active la double authentification : en plus du mot de passe, un code à 6 chiffres affiché par une appli gratuite sur ton téléphone. 2 minutes, une seule fois.": "Para entrares no {}, ativa a autenticação de dois fatores: além da palavra-passe, um código de 6 dígitos mostrado por uma app gratuita no teu telemóvel. 2 minutos, uma única vez.",
- "Activer maintenant": "Ativar agora"
+ "Activer maintenant": "Ativar agora",
+ "Des actions faites sur l'ancienne adresse appartiennent à un autre compte : connecte-toi avec ce compte pour les récupérer.": "Há ações feitas no endereço antigo que pertencem a outra conta: entra com essa conta para as recuperar.",
+ "1 action faite sur l'ancienne adresse a été récupérée : elle part maintenant.": "1 ação feita no endereço antigo foi recuperada: vai ser enviada agora.",
+ "{} actions faites sur l'ancienne adresse ont été récupérées : elles partent maintenant.": "{} ações feitas no endereço antigo foram recuperadas: vão ser enviadas agora.",
+ "Rien n'a été modifié : cette commande a changé sur un autre appareil entre-temps (elle est maintenant « {} »).": "Nada foi alterado: esta encomenda mudou noutro dispositivo entretanto (agora está « {} »).",
+ "Rien n'a été modifié : cet élément a changé sur un autre appareil entre-temps.": "Nada foi alterado: este elemento mudou noutro dispositivo entretanto.",
+ "bilan": "resumo",
+ "etiquettes": "etiquetas"
 }

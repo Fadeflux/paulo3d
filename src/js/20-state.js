@@ -437,9 +437,13 @@ const OPS = {
     keys: () => [],
     apply(V, p, ctx) {
       V.sales.delete(p.id);
-      // commande livrée par cette vente : elle redevient « prête » (même règle dans p3d_delete_sale)
+      // commande livrée par cette vente : elle redevient « prête » (même règle dans p3d_delete_sale).
+      // ⚠️ (19/09) SANS toucher updated_at : cette suppression, une fois confirmée, s'écrit dans la copie
+      // de référence (applyConfirmedDelete) ; tamponnée à l'heure du TÉLÉPHONE (souvent en avance), la
+      // commande paraissait plus récente que la ligne de la base, qui était ignorée — et avec elle toute
+      // modification faite ailleurs entre-temps. La base date la ligne elle-même ; sa version gagne.
       for (const o of valuesOf(V.orders)) {
-        if (o.sale_id === p.id) V.orders.set(o.id, { ...o, sale_id: null, status: o.status === 'delivered' ? 'ready' : o.status, updated_at: ctx ? ctx.now : o.updated_at });
+        if (o.sale_id === p.id) V.orders.set(o.id, { ...o, sale_id: null, status: o.status === 'delivered' ? 'ready' : o.status });
       }
       const lots = new Set();
       for (const i of valuesOf(V.sale_items)) {

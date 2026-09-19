@@ -737,8 +737,13 @@ test('durcissement.sql : 2FA obligatoire, nouvelles tables fermées et en RLS, d
     const t = await one(admin, "select c.relrowsecurity as rls, has_table_privilege('anon', 'public.p3d_essai_durci', 'select') as anon_sel from pg_class c where c.oid = 'public.p3d_essai_durci'::regclass");
     assert.deepEqual(t, { rls: true, anon_sel: false });
     await admin.query('create function public.p3d_essai_fn() returns int language sql as $$ select 1 $$');
-    assert.equal((await one(admin, "select has_function_privilege('anon', 'public.p3d_essai_fn()', 'execute') as x")).x, true,
-      'fonctions : PUBLIC garde le droit par défaut de Postgres (le schéma retire lui-même chaque fonction)');
+    // ⚠️ (19/09) Le script promettait « toute fonction créée plus tard reste fermée aux visiteurs sans
+    // compte », mais PostgreSQL donne d'office le droit d'appel à PUBLIC : anon pouvait l'appeler.
+    assert.equal((await one(admin, "select has_function_privilege('anon', 'public.p3d_essai_fn()', 'execute') as x")).x, false,
+      'nouvelle fonction : fermée aux visiteurs sans compte');
+    // … sans rien retirer aux fonctions de l'appli, accordées une à une par schema.sql
+    assert.equal((await one(admin, "select has_function_privilege('authenticated', 'public.p3d_record_sale(jsonb)', 'execute') as x")).x, true);
+    assert.equal((await one(admin, "select has_function_privilege('anon', 'public.p3d_ping()', 'execute') as x")).x, true, 'le ping public reste public');
   } finally {
     await admin.query('drop table if exists public.p3d_essai_durci; drop function if exists public.p3d_essai_fn();');
     await admin.query("create or replace function p3d_private.mfa_obligatoire() returns boolean language sql immutable set search_path = '' as 'select false'");
