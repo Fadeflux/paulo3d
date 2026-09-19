@@ -18,7 +18,7 @@ export const SITES = {
     lang: 'pt-PT',
     locale: 'pt-PT',
     letter: LETTERS.P,
-    out: 'docs',
+    out: '.dev/prod/paulo3d', // docs/ = redirection de l'ancienne adresse (tools/redirect-old.mjs)
     icons: 'src/icons',
     texts: {
       title: 'Paulo3D — Oficina de impressão 3D',

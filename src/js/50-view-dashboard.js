@@ -159,11 +159,11 @@ VIEWS.dashboard = {
       <div class="mt-3 grid gap-3 lg:grid-cols-5">
         <div class="card p-4 lg:col-span-3">
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <h2 class="text-sm font-semibold text-slate-100">Chiffre d'affaires et bénéfice net</h2>
-            <div class="flex items-center gap-3 text-[12px] text-slate-400"><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-cyan-400"></span>CA</span><span class="flex items-center gap-1.5"><span class="h-2 w-2 rounded-full bg-neon"></span>Bénéfice</span></div>
+            <h2 class="text-sm font-semibold text-slate-100">Bénéfice net par mois</h2>
+            <span class="text-[12px] text-slate-400">ce qu'il reste une fois tout payé</span>
           </div>
           ${valuesOf(V.sales).length
-            ? html`<div class="relative mt-3 h-56 sm:h-64">${globalThis.Chart ? html`<canvas id="chart-revenue" role="img" aria-label="${`Évolution mensuelle du chiffre d'affaires et du bénéfice. ${range.label} : ${fmtEur(s.revenue)} encaissés, bénéfice net ${fmtEur(s.net)}.`}"></canvas>` : chartUnavailable()}</div>`
+            ? html`<div class="relative mt-3 h-56 sm:h-64">${globalThis.Chart ? html`<canvas id="chart-revenue" role="img" aria-label="${`Évolution mensuelle du bénéfice net. ${range.label} : ${fmtEur(s.net)}.`}"></canvas>` : chartUnavailable()}</div>`
             : html`<div class="mt-3 flex h-56 flex-col items-center justify-center rounded-xl border border-dashed border-white/[0.08] text-center text-[13px] text-slate-400 sm:h-64">${icon('ChartLine', 'w-8 h-8 mb-2 text-slate-500')}La courbe apparaîtra après ta première vente.</div>`}
         </div>
         <div class="card p-4 lg:col-span-2">
@@ -205,7 +205,6 @@ VIEWS.dashboard = {
         data: {
           labels: series.map((x) => x.label),
           datasets: [
-            { label: "Chiffre d'affaires", data: series.map((x) => (x.revenue === null ? null : round(x.revenue, 2))), borderColor: '#22D3EE', backgroundColor: fadeFill('34,211,238'), fill: true, tension: 0.35, borderWidth: 2, pointRadius: dots, pointHoverRadius: 4 },
             { label: 'Bénéfice net', data: series.map((x) => (x.net === null ? null : round(x.net, 2))), borderColor: '#22F2A0', backgroundColor: fadeFill('34,242,160'), fill: true, tension: 0.35, borderWidth: 2, pointRadius: dots, pointHoverRadius: 4 },
           ],
         },

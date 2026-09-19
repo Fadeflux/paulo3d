@@ -1,9 +1,0 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 120"><defs><radialGradient id="g" cx="50%" cy="38%" r="60%"><stop offset="0" stop-color="#22F2A0" stop-opacity=".16"/><stop offset="1" stop-color="#22F2A0" stop-opacity="0"/></radialGradient></defs>
-  <rect x="1" y="1" width="118" height="118" rx="27" fill="#0F151C" stroke="#243244" stroke-width="1.5"/>
-  <rect x="1" y="1" width="118" height="118" rx="27" fill="url(#g)"/>
-  <g transform="translate(60 60) scale(1) translate(-63 -60)">
-    <defs><clipPath id="p"><path clip-rule="evenodd" d="M34 22H66C84 22 94 34 94 50C94 66 84 78 66 78H56V98H34ZM56 40V60H65C71 60 74 56 74 50C74 44 71 40 65 40Z"/></clipPath></defs>
-    <g clip-path="url(#p)"><rect x="30" y="22" width="70" height="5" fill="#223244"/><rect x="30" y="29" width="70" height="5" fill="#223244"/><rect x="30" y="36" width="70" height="5" fill="#223244"/><rect x="30" y="43" width="70" height="5" fill="#22D3EE"/><rect x="30" y="50" width="70" height="5" fill="#22F2A0"/><rect x="30" y="57" width="70" height="5" fill="#22F2A0"/><rect x="30" y="64" width="70" height="5" fill="#22F2A0"/><rect x="30" y="71" width="70" height="5" fill="#22F2A0"/><rect x="30" y="78" width="70" height="5" fill="#22F2A0"/><rect x="30" y="85" width="70" height="5" fill="#22F2A0"/><rect x="30" y="92" width="70" height="6" fill="#22F2A0"/></g>
-    <line x1="22" y1="45.5" x2="30" y2="45.5" stroke="#22D3EE" stroke-width="1.5" stroke-linecap="round"/>
-    <line x1="98" y1="45.5" x2="104" y2="45.5" stroke="#22D3EE" stroke-width="1.5" stroke-linecap="round"/>
-  </g></svg>

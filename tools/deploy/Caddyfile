@@ -1,0 +1,23 @@
+{
+	admin off
+	auto_https off
+}
+
+# Site statique (docs/ construit par tools/build.mjs), servi par Railway derrière HTTPS.
+:{$PORT} {
+	root * /srv
+	encode gzip
+	header {
+		Strict-Transport-Security "max-age=31536000"
+		X-Content-Type-Options "nosniff"
+		X-Frame-Options "DENY"
+		Referrer-Policy "no-referrer"
+		Permissions-Policy "camera=(self), microphone=(), geolocation=(), payment=(), usb=()"
+		Cross-Origin-Opener-Policy "same-origin"
+		-Server
+	}
+	# la page, le service worker et le manifeste sont toujours revérifiés : une mise à jour arrive tout de suite
+	@frais path / /index.html /sw.js /manifest.webmanifest
+	header @frais Cache-Control "no-cache"
+	file_server
+}

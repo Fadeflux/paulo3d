@@ -314,8 +314,6 @@
  "encaissés · marge": "recebidos · margem",
  "{}Stock prêt à vendre": "{}Stock pronto a vender",
  "valeur au coût de revient :": "valor ao custo de produção:",
- "Chiffre d'affaires et bénéfice net": "Faturação e lucro líquido",
- "Bénéfice": "Lucro",
  "Top ventes": "Mais vendidos",
  "{}, par chiffre d'affaires": "{}, por faturação",
  "Où part l'argent": "Para onde vai o dinheiro",
@@ -341,7 +339,6 @@
  "à racheter bientôt": "a voltar a comprar em breve",
  "{}Bobines à surveiller": "{}Bobinas a vigiar",
  "Voir tout": "Ver tudo",
- "Évolution mensuelle du chiffre d'affaires et du bénéfice. {} : {} encaissés, bénéfice net {}.": "Evolução mensal da faturação e do lucro. {}: {} recebidos, lucro líquido {}.",
  "{}La courbe apparaîtra après ta première vente.": "{}A curva aparece depois da tua primeira venda.",
  "Produits les plus vendus, {} : {}.": "Produtos mais vendidos, {}: {}.",
  "{}Aucune vente sur la période.": "{}Nenhuma venda no período.",
@@ -1195,7 +1192,6 @@
  "(une seule fois).": "(uma única vez).",
  "en haut (ou": "em cima (ou",
  "sur": "de",
- "CA": "Faturação",
  "sur {}": "de {}",
  "{} €/kg": "{} €/kg",
  "{} min finition": "{} min de acabamento",
@@ -1214,5 +1210,8 @@
  "Aujourd'hui": "Hoje",
  "%j %mois %an à %h": "%j de %mois de %an às %h",
  "Tu as reçu un lien de configuration ? Colle-le ici en entier : la clé est remplie toute seule.": "Recebeste uma ligação de configuração? Cola-a aqui por inteiro: a chave é preenchida sozinha.",
- "Ce lien de configuration est incomplet : copie-le en entier.": "Esta ligação de configuração está incompleta: copia-a por inteiro."
+ "Ce lien de configuration est incomplet : copie-le en entier.": "Esta ligação de configuração está incompleta: copia-a por inteiro.",
+ "Bénéfice net par mois": "Lucro líquido por mês",
+ "ce qu'il reste une fois tout payé": "o que sobra depois de tudo pago",
+ "Évolution mensuelle du bénéfice net. {} : {}.": "Evolução mensal do lucro líquido. {}: {}."
 }
