@@ -141,6 +141,8 @@ const Screens = {
   },
 
   setup({ fromSettings = false } = {}) {
+    // base inscrite dans le site : rien à configurer, pas de démo (on n'arrive ici que sur une panne)
+    if (SITE.supaUrl) return this.fatal('La connexion à la base n’a pas pu démarrer. Vérifie internet puis recharge la page.');
     const cfg = lsGet(LS.supa, null) || {};
     const el = this.frame(html`
       <div class="card p-5 sm:p-6">
@@ -249,10 +251,10 @@ const Screens = {
           <button class="text-slate-400 hover:text-slate-200" id="forgot">Mot de passe oublié ?</button>
         </div>
       </div>
-      <div class="mt-5 flex flex-col items-center gap-2 text-[12px] text-slate-500">
+      ${SITE.supaUrl ? '' : html`<div class="mt-5 flex flex-col items-center gap-2 text-[12px] text-slate-500">
         <span class="truncate">Base : ${cfg.url || '—'}</span>
         <button class="font-medium text-slate-400 hover:text-slate-200" id="change-base">Changer de base Supabase</button>
-      </div>`);
+      </div>`}`);
 
     const form = el.querySelector('#login-form');
     const msg = el.querySelector('#login-msg');
@@ -265,7 +267,7 @@ const Screens = {
       i.type = i.type === 'password' ? 'text' : 'password';
       e.currentTarget.setAttribute('aria-pressed', String(i.type === 'text'));
     });
-    el.querySelector('#change-base').addEventListener('click', () => this.setup({ fromSettings: false }));
+    el.querySelector('#change-base')?.addEventListener('click', () => this.setup({ fromSettings: false }));
     const forgot = el.querySelector('#forgot');
     if (forgot) {
       forgot.addEventListener('click', async () => {

@@ -1226,5 +1226,6 @@
  "{} (copie)": "{} (cópia)",
  "marge {} %": "margem {} %",
  "Plus": "Mais",
- "version {}": "versão {}"
+ "version {}": "versão {}",
+ "La connexion à la base n’a pas pu démarrer. Vérifie internet puis recharge la page.": "Não foi possível iniciar a ligação à base de dados. Verifica a internet e recarrega a página."
 }

@@ -149,3 +149,9 @@ test('adresse Supabase : un chemin (relais d’un intermédiaire) est refusé', 
   assert.equal(fr.normalizeSupaUrl('https://abcdefghijklmnopqrst.supabase.co/rest/v1/'), 'https://abcdefghijklmnopqrst.supabase.co');
   assert.equal(fr.normalizeSupaUrl('https://abcdefghijklmnopqrst.supabase.co/functions/v1/relais'), '');
 });
+
+test('écran de connexion d’un site à base inscrite : ni « Changer de base », ni configuration, ni démo', () => {
+  const src = code('anais3d');
+  assert.match(src, /setup\(\{ fromSettings = false \} = \{\}\) \{\s*\/\/[^\n]*\n\s*if \(SITE\.supaUrl\) return this\.fatal\(/, 'configuration jamais affichée');
+  assert.match(src, /\$\{SITE\.supaUrl \? '' : html`<div[^`]*id="change-base"/, 'bouton « Changer de base » masqué');
+});
