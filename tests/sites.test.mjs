@@ -155,3 +155,12 @@ test('écran de connexion d’un site à base inscrite : ni « Changer de base �
   assert.match(src, /setup\(\{ fromSettings = false \} = \{\}\) \{\s*\/\/[^\n]*\n\s*if \(SITE\.supaUrl\) return this\.fatal\(/, 'configuration jamais affichée');
   assert.match(src, /\$\{SITE\.supaUrl \? '' : html`<div[^`]*id="change-base"/, 'bouton « Changer de base » masqué');
 });
+
+test('matières : une bobine saisie en français retrouve une ligne de modèle en portugais (et l’inverse)', () => {
+  for (const app of [pt, fr]) {
+    assert.equal(app.materialKey('PLA Mat'), app.materialKey('PLA Mate'));
+    assert.equal(app.materialKey('Résine'), app.materialKey('Resina'));
+    assert.equal(app.materialKey('Autre'), app.materialKey('Outro'));
+    assert.notEqual(app.materialKey('PLA'), app.materialKey('PETG'));
+  }
+});

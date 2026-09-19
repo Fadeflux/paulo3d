@@ -21,7 +21,7 @@ export function loadApp(extra = {}, appFile = 'app.js') {
     'suggestSpool', 'lineCpg', 'templateCost', 'roundPrice', 'pricingOf', 'suggestPrice', 'marginInfo', 'templatePrice', 'planProduction',
     'simulateFifo', 'stockGroups', 'planSale', 'channelFee', 'computeStats', 'monthlySeries', 'topProducts', 'historyEvents', 'toCsv', 'csvCell',
     'exportCsvSales', 'exportJson', 'parseDurationToMin', 'parseBambuSliceInfo', 'parseGcodeText', 'parseSlicerText', 'importToTemplate',
-    'normalizeMaterial', 'classifyError', 'friendlyError', 'normalizeSupaUrl', 'projectRefFromUrl', 'keyProblem', 'b64urlEncode', 'b64urlDecode',
+    'normalizeMaterial', 'materialKey', 'classifyError', 'friendlyError', 'normalizeSupaUrl', 'projectRefFromUrl', 'keyProblem', 'b64urlEncode', 'b64urlDecode',
     'valuesOf', 'firstRow', 'pick', 'SPOOL_FIELDS', 'TEMPLATE_FIELDS', 'MACHINE_FIELDS', 'SETTINGS_FIELDS', 'REMOTE', 'ICONS', 'APP_VERSION',
     'tsMicros', 'normalizeRow', 'SITE', 'LS', 'lsKey', 'dbMessage', 'friendlyError', 'fmtDate', 'MONTHS', 'MONTHS_LONG', 'attrList', 'AUTH_CODES', 'inputNum', 'plural', 'exportCsvJournal',
     'passwordProblem', 'authErrorMessage', 'PASSWORD_MIN', 'weighProblem', 'isPieceCount', 'backupStatus', 'ORDER_FIELDS', 'ORDER_STATUSES', 'orderDueIn', 'openOrders', 'orderTotal',

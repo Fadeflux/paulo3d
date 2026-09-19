@@ -202,7 +202,10 @@ function orderFieldsProblem(f, partial = false) {
 
 // Exemple de poids restant affiché dans les champs vides (proportionné à la bobine)
 const weighExample = (spool) => Math.round(toNum(spool && spool.initial_weight_g, 1000) * 0.64);
-const materialKey = (m) => normalizeText(m).replace(/[\s_-]+/g, ' ');
+// même matière quelle que soit la langue du site où elle a été saisie (« PLA Mat » = « PLA Mate »,
+// « Résine » = « Resina ») : une bobine et une ligne de modèle se retrouvent toujours
+const materialKey = (m) => normalizeText(m).replace(/[\s_-]+/g, ' ')
+  .replace(/\bmate\b/g, 'mat').replace(/\bresina\b/g, 'resine').replace(/\boutro\b/g, 'autre');
 
 function activeSpools(V) {
   return valuesOf(V.spools).filter((s) => !s.archived);

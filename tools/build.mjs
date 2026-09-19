@@ -113,7 +113,7 @@ js = js.replace("'__SRI_JSZIP__'", () => JSON.stringify(sri[CDN.jszip])).replace
 const pkg = JSON.parse(read('package.json'));
 const hash = crypto.createHash('sha256')
   .update(js).update(css).update(htmlTpl).update(read('src/sw.js')).update(read('src/manifest.webmanifest')).update(lf(read('tools/build.mjs'))).update(lf(read('tools/cdn.mjs')))
-  .update(JSON.stringify(SITE))
+  .update(JSON.stringify(SITE)).update(DEV ? 'dev' : 'prod') // la version de test (127.0.0.1 autorisé) n'a jamais le numéro de la publiée
   .digest('hex').slice(0, 8);
 const version = `${pkg.version}-${hash}`;
 js = js.replace(/'__APP_VERSION__'/g, () => JSON.stringify(version));
