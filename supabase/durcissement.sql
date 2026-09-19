@@ -53,5 +53,31 @@ create or replace function p3d_private.mfa_obligatoire()
 returns boolean language sql immutable set search_path = '' as 'select true';
 revoke execute on function p3d_private.mfa_obligatoire() from public;
 
+-- contrôle du code (même version que schema.sql) : exige le code aussi pour un compte qui ne l'a pas encore activé
+create or replace function p3d_private.mfa_ok()
+returns boolean
+language plpgsql
+stable
+security definer
+set search_path = ''
+as $$
+begin
+  if coalesce((select auth.jwt()) ->> 'aal', 'aal1') <> 'aal2' then
+    if exists (select 1 from auth.mfa_factors f
+               where f.user_id = (select auth.uid()) and f.status = 'verified') then
+      raise exception using errcode = '42501', message = 'Code de double authentification requis.', hint = 'P3D2F';
+    end if;
+    -- obligatoire et pas encore activée : l'appli ouvre l'activation (même indice P3D2F)
+    if (select p3d_private.mfa_obligatoire()) then
+      raise exception using errcode = '42501', message = 'Double authentification obligatoire : active-la pour continuer.', hint = 'P3D2F';
+    end if;
+  end if;
+  return true;
+end
+$$;
+revoke execute on function p3d_private.mfa_ok() from public;
+grant usage on schema p3d_private to authenticated;
+grant execute on function p3d_private.mfa_ok() to authenticated;
+
 -- Vérification : doit renvoyer « true »
 select p3d_private.mfa_obligatoire() as double_authentification_obligatoire;
