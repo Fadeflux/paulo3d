@@ -1,10 +1,10 @@
 <!doctype html>
-<html lang="fr" class="bg-[#05070A]">
+<html lang="{{LANG}}" class="bg-[#05070A]">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
-<title>Paulo3D — Atelier d'impression 3D</title>
-<meta name="description" content="Paulo3D : bobines, coût de revient, production, stock et ventes de l'atelier d'impression 3D.">
+<title>{{TITLE}}</title>
+<meta name="description" content="{{DESCRIPTION}}">
 <meta http-equiv="Content-Security-Policy" content="{{CSP}}">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
@@ -13,7 +13,7 @@
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Paulo3D">
+<meta name="apple-mobile-web-app-title" content="{{NAME}}">
 <meta name="format-detection" content="telephone=no">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="icon" href="icons/favicon.svg" type="image/svg+xml">
@@ -60,11 +60,11 @@
 </style>
 </head>
 <body>
-<div id="splash" aria-live="polite">{{SPLASH_LOGO}}<div class="word">Paulo<span>3D</span></div></div>
+<div id="splash" aria-live="polite">{{SPLASH_LOGO}}<div class="word">{{WORD}}<span>3D</span></div></div>
 <div id="app"></div>
 <div id="modal-root"></div>
 <div id="toast-root" class="pointer-events-none fixed inset-x-0 bottom-0 z-[60] flex flex-col items-center gap-2 px-4 pb-[calc(env(safe-area-inset-bottom)+5.5rem)] lg:items-end lg:pb-6 lg:pr-6"></div>
-<noscript><p style="padding:24px;font-family:system-ui;color:#E2E8F0">Paulo3D a besoin de JavaScript pour fonctionner.</p></noscript>
+<noscript><p style="padding:24px;font-family:system-ui;color:#E2E8F0">{{NOSCRIPT}}</p></noscript>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js" integrity="{{SRI_SUPABASE}}" crossorigin="anonymous"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js" integrity="{{SRI_CHART}}" crossorigin="anonymous"></script>
 <script>

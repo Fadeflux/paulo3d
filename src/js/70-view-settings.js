@@ -28,7 +28,7 @@ VIEWS.parametres = {
     const backend = Sync.backend || Boot.backend;
     const isDemo = backend && backend.kind === 'demo';
     const cfg = lsGet(LS.supa, null);
-    const machines = valuesOf(V.machines).sort((a, b) => (a.archived - b.archived) || (b.is_default - a.is_default) || a.name.localeCompare(b.name, 'fr'));
+    const machines = valuesOf(V.machines).sort((a, b) => (a.archived - b.archived) || (b.is_default - a.is_default) || a.name.localeCompare(b.name, SITE.lang));
     const example = suggestPrice(4, pricingOf(null, st));
     const pendingOps = Store.Q.length;
 
@@ -43,7 +43,7 @@ VIEWS.parametres = {
                 <div class="flex justify-between gap-3"><span class="text-slate-400">Adresse du projet</span><span class="truncate font-mono text-[13px] text-slate-200">${cfg ? cfg.url : '—'}</span></div>
                 <div class="flex justify-between gap-3"><span class="text-slate-400">Clé publique</span><span class="font-mono text-[13px] text-slate-200">${cfg ? maskKey(cfg.key) : '—'}</span></div>
                 <div class="flex justify-between gap-3"><span class="text-slate-400">État</span><span class="text-slate-200">${Sync.summary().label}</span></div>
-                <div class="flex justify-between gap-3"><span class="text-slate-400">Temps réel</span><span class="text-slate-200">${Sync.state.realtime === 'on' ? 'actif' : 'coupé'}</span></div>
+                <div class="flex justify-between gap-3"><span class="text-slate-400">Temps réel</span><span class="text-slate-200">${Sync.state.realtime === 'on' ? ui('actif') : 'coupé'}</span></div>
                 <div class="flex justify-between gap-3"><span class="text-slate-400">Schéma</span><span class="text-slate-200">${Sync.state.schemaVersion === null ? 'non vérifié' : `version ${Sync.state.schemaVersion}`}</span></div>
               </div>`,
             isDemo
@@ -114,7 +114,7 @@ VIEWS.parametres = {
               <div class="flex justify-between"><span class="text-slate-400">Actions en attente d'envoi</span><span class="text-slate-200">${fmtNum(Store.Q.filter((o) => o.status !== 'failed').length)}</span></div>
               <div class="flex justify-between"><span class="text-slate-400">Actions refusées</span><span class="${Store.Q.some((o) => o.status === 'failed') ? 'text-rose-300' : 'text-slate-200'}">${fmtNum(Store.Q.filter((o) => o.status === 'failed').length)}</span></div>
               <div class="flex justify-between"><span class="text-slate-400">Dernière synchronisation</span><span class="text-slate-200">${Sync.state.lastPullAt ? fmtRelative(Sync.state.lastPullAt) : '—'}</span></div>
-              ${Sync.backend && Sync.backend.kind === 'supabase' ? html`<div class="flex justify-between"><span class="text-slate-400">Dernière sauvegarde complète</span><span class="${backupStatus(Store.V).due ? 'text-amber-300' : 'text-slate-200'}">${settingsOf(Store.V).last_backup_at ? fmtRelative(settingsOf(Store.V).last_backup_at) : 'jamais'}</span></div>` : ''}
+              ${Sync.backend && Sync.backend.kind === 'supabase' ? html`<div class="flex justify-between"><span class="text-slate-400">Dernière sauvegarde complète</span><span class="${backupStatus(Store.V).due ? 'text-amber-300' : 'text-slate-200'}">${settingsOf(Store.V).last_backup_at ? fmtRelative(settingsOf(Store.V).last_backup_at) : ui('jamais')}</span></div>` : ''}
             </div>
             <p class="text-[12px] text-slate-500">L'offre gratuite de Supabase ne garde aucune copie restaurable : télécharge une sauvegarde complète (JSON) une fois par mois, l'appli te le rappelle.</p>`,
             html`${btn('Vider cet appareil', { size: 'sm', variant: 'ghost', icon: 'Eraser', action: 'clear-local' })}${btn('Synchro', { size: 'sm', variant: 'ghost', icon: 'RefreshCw', action: 'sync-panel' })}${btn('Exporter', { size: 'sm', variant: 'primary', icon: 'Download', action: 'export-open' })}`)}
@@ -127,7 +127,7 @@ VIEWS.parametres = {
             </div>`,
             App.installPrompt ? btn('Installer maintenant', { size: 'sm', variant: 'primary', icon: 'Download', action: 'install-app' }) : '')}
 
-          <p class="px-1 text-center text-[12px] text-slate-500">Paulo3D · version ${APP_VERSION} · schéma ${SCHEMA_VERSION}</p>
+          <p class="px-1 text-center text-[12px] text-slate-500">${SITE.name} · version ${APP_VERSION} · schéma ${SCHEMA_VERSION}</p>
         </div>
       </div>`;
   },
@@ -155,7 +155,7 @@ Actions['save-settings'] = async (el) => {
       patch[k] = roundDb(v, k === 'machine_rate' ? 4 : k === 'price_coef' ? 3 : 2);
     } else patch[k] = typeof v === 'string' ? v.trim() : v;
   }
-  if ('workshop_name' in patch) patch.workshop_name = patch.workshop_name || 'Paulo3D';
+  if ('workshop_name' in patch) patch.workshop_name = patch.workshop_name || SITE.name;
   if ('price_coef' in patch && !(patch.price_coef > 0)) return setFieldError(section, 'price_coef', 'Doit être supérieur à 0.');
   if ('target_margin_pct' in patch && patch.target_margin_pct >= 100) return setFieldError(section, 'target_margin_pct', 'Doit être inférieure à 100 %.');
   if (el.dataset.section === 's-pricing') patch.pricing_mode = App.ui.pricingDraft || settingsOf(Store.V).pricing_mode;

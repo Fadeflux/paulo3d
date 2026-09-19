@@ -74,9 +74,36 @@ function classifyError(e) {
   return 'business';
 }
 
+// Messages écrits par la BASE (supabase/schema.sql, en français) : repris ici pour être traduits avec
+// le reste de l'appli sur un site dans une autre langue. Un message inconnu reste tel quel.
+const DB_MESSAGES = [
+  [/^Stock insuffisant pour « (.*) » : il manque (\d+) pièces?\.$/, (m) => `Stock insuffisant pour « ${m[1]} » : il manque ${plural(+m[2], 'pièce', 'pièces')}.`],
+  [/^Cet élément a été supprimé sur un autre appareil\.$/, () => 'Cet élément a été supprimé sur un autre appareil.'],
+  [/^Cette commande est annulée/, () => 'Cette commande est annulée : remets-la « à faire » avant de la livrer.'],
+  [/^Cette commande est déjà livrée/, () => 'Cette commande est déjà livrée (vente déjà enregistrée, peut-être sur un autre appareil).'],
+  [/^Code de double authentification requis\.$/, () => 'Code de double authentification requis.'],
+  [/^Consommation négative refusée\.$/, () => 'Consommation négative refusée.'],
+  [/^Des pièces de cette production ont déjà été vendues/, () => "Des pièces de cette production ont déjà été vendues : supprime d'abord les ventes concernées."],
+  [/^Identifiant de production manquant\.$/, () => 'Identifiant de production manquant.'],
+  [/^Identifiant de retrait manquant\.$/, () => 'Identifiant de retrait manquant.'],
+  [/^Identifiant de vente manquant\.$/, () => 'Identifiant de vente manquant.'],
+  [/^Poids pesé supérieur au poids initial/, () => 'Poids pesé supérieur au poids initial de la bobine : as-tu retiré le poids de la bobine vide ? Sinon, corrige le poids initial de la bobine.'],
+  [/^Quantité à retirer invalide\.$/, () => 'Quantité à retirer invalide.'],
+  [/^Session expirée : reconnecte-toi\.$/, () => 'Session expirée : reconnecte-toi.'],
+  [/^Une vente doit contenir au moins un article\.$/, () => 'Une vente doit contenir au moins un article.'],
+];
+function dbMessage(msg) {
+  const s = String(msg || '');
+  for (const [re, fn] of DB_MESSAGES) {
+    const m = re.exec(s);
+    if (m) return fn(m);
+  }
+  return s;
+}
+
 function friendlyError(e, op) {
   const code = String((e && e.code) || '');
-  if (/^P3D/.test(code)) return e.message;
+  if (/^P3D/.test(code)) return dbMessage(e.message);
   if (code === '23503') {
     return op && /\.delete$/.test(op.type)
       ? "Impossible de supprimer : cet élément est utilisé dans l'historique. Archive-le plutôt."
@@ -87,7 +114,7 @@ function friendlyError(e, op) {
   if (code === '22P02' || code === '22003') return 'Une valeur a un format invalide.';
   if (code === '42501') return 'Accès refusé : reconnecte-toi.';
   if (classifyError(e) === 'schema') return "La base n'est pas à jour : relance le script SQL dans Supabase.";
-  return (e && e.message) || 'Erreur inconnue.';
+  return (e && e.message && dbMessage(e.message)) || 'Erreur inconnue.';
 }
 
 function projectRefFromUrl(url) {
@@ -220,9 +247,9 @@ class SupabaseBackend {
     this.userId = null;
     this.channel = null;
     this.sb = supabase.createClient(url, key, {
-      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: `p3d-auth-${this.ref}` },
+      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, storageKey: `${SITE.prefix}-auth-${this.ref}` },
       realtime: { params: { eventsPerSecond: 20 } },
-      global: { headers: { 'x-client-info': `paulo3d/${APP_VERSION}` }, fetch: fetchWithTimeout },
+      global: { headers: { 'x-client-info': `${SITE.id}/${APP_VERSION}` }, fetch: fetchWithTimeout },
     });
   }
 
@@ -307,7 +334,7 @@ class SupabaseBackend {
     this.unsubscribe();
     if (!this.userId) return;
     this.channel = this.sb
-      .channel(`p3d-${this.userId}`)
+      .channel(`${SITE.prefix}-${this.userId}`)
       .on('postgres_changes', { event: '*', schema: 'public' }, (payload) => onChange(payload))
       .subscribe((status) => onStatus(status));
   }
@@ -338,7 +365,7 @@ class DemoBackend {
 
   async load() {
     try {
-      this.db = await IDB.open('paulo3d:demo-server');
+      this.db = await IDB.open(`${SITE.id}:demo-server`);
       for (const t of TABLES) {
         const rows = await IDB.get(this.db, `snap:${t}`);
         if (Array.isArray(rows)) for (const r of rows) this.S[t].set(r[PK(t)], r);

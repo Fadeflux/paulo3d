@@ -1,15 +1,21 @@
 // Génère les icônes de l'application (PWA, iPhone, onglet) à partir du logo Paulo3D.
-// Usage : node tools/icons.mjs
+// Usage : node tools/icons.mjs [paulo3d|anais3d]   (lettre du logo et dossier de sortie : tools/sites.mjs)
 import fs from 'node:fs';
 import path from 'node:path';
 import sharp from 'sharp';
+import { SITES } from './sites.mjs';
 import { fileURLToPath } from 'node:url';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const OUT = path.join(ROOT, 'src', 'icons');
+const SITE = SITES[process.argv[2] || 'paulo3d'];
+if (!SITE) {
+  console.error(`Site inconnu : ${process.argv[2]}`);
+  process.exit(1);
+}
+const OUT = path.join(ROOT, SITE.icons);
 fs.mkdirSync(OUT, { recursive: true });
 
-const P_PATH = 'M34 22H66C84 22 94 34 94 50C94 66 84 78 66 78H56V98H34ZM56 40V60H65C71 60 74 56 74 50C74 44 71 40 65 40Z';
+const P_PATH = SITE.letter;
 
 function layers() {
   const out = [];
@@ -54,4 +60,4 @@ await png(tile, 192, 'icon-192.png');
 await png(tile, 512, 'icon-512.png');
 await png(fullBleed(0.78), 512, 'icon-maskable-512.png');
 await png(fullBleed(0.9), 180, 'apple-touch-icon.png');
-console.log('✔ icônes générées dans src/icons/');
+console.log(`✔ icônes ${SITE.name} générées dans ${SITE.icons}/`);

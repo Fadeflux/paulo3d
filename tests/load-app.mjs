@@ -7,8 +7,9 @@ import { fileURLToPath } from 'node:url';
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // extra : globales en plus (ex. la bibliothèque qrcode pour les étiquettes)
-export function loadApp(extra = {}) {
-  const file = path.join(ROOT, '.dev', 'app.js');
+// appFile : un site construit (ex. 'app-paulo3d.js' après « node tools/build.mjs --dev --site paulo3d »)
+export function loadApp(extra = {}, appFile = 'app.js') {
+  const file = path.join(ROOT, '.dev', appFile);
   if (!fs.existsSync(file)) throw new Error('Lance d’abord « node tools/build.mjs --dev »');
   const code = fs.readFileSync(file, 'utf8');
   const ctx = vm.createContext({ console, crypto: globalThis.crypto, setTimeout, clearTimeout, TextEncoder, TextDecoder, URL, URLSearchParams, atob, btoa, ...extra });
@@ -22,7 +23,7 @@ export function loadApp(extra = {}) {
     'exportCsvSales', 'exportJson', 'parseDurationToMin', 'parseBambuSliceInfo', 'parseGcodeText', 'parseSlicerText', 'importToTemplate',
     'normalizeMaterial', 'classifyError', 'friendlyError', 'normalizeSupaUrl', 'projectRefFromUrl', 'keyProblem', 'b64urlEncode', 'b64urlDecode',
     'valuesOf', 'firstRow', 'pick', 'SPOOL_FIELDS', 'TEMPLATE_FIELDS', 'MACHINE_FIELDS', 'SETTINGS_FIELDS', 'REMOTE', 'ICONS', 'APP_VERSION',
-    'tsMicros', 'normalizeRow', 'attrList', 'AUTH_CODES', 'inputNum', 'plural', 'exportCsvJournal',
+    'tsMicros', 'normalizeRow', 'SITE', 'LS', 'lsKey', 'dbMessage', 'friendlyError', 'fmtDate', 'MONTHS', 'MONTHS_LONG', 'attrList', 'AUTH_CODES', 'inputNum', 'plural', 'exportCsvJournal',
     'passwordProblem', 'authErrorMessage', 'PASSWORD_MIN', 'weighProblem', 'isPieceCount', 'backupStatus', 'ORDER_FIELDS', 'ORDER_STATUSES', 'orderDueIn', 'openOrders', 'orderTotal',
     'pdfDocument', 'pdfChars', 'pdfWidth', 'pdfFit', 'pdfWrap', 'monthRange', 'shiftMonth', 'monthReport', 'reportKpis', 'reportTables', 'reportPdf',
     'labelsPdf', 'LABEL_GRID', 'orderDeliveredAt', 'fmtPlainDate', 'MM', 'spoolIdFromLabel', 'orderFieldsProblem',

@@ -21,7 +21,7 @@ VIEWS.bobines = {
     const view = App.ui.spoolView || 'active';
     const q = normalizeText(App.ui.spoolQ || '');
     const all = valuesOf(V.spools);
-    const materials = [...new Set(all.map((s) => s.material))].sort((a, b) => a.localeCompare(b, 'fr'));
+    const materials = [...new Set(all.map((s) => s.material))].sort((a, b) => a.localeCompare(b, SITE.lang));
     // filtre mémorisé sur une matière qui n'existe plus (bobines supprimées) : ignoré, sinon la liste
     // resterait vide sans bouton pour l'enlever (les boutons de matière sont masqués s'il n'en reste qu'une)
     const mat = materials.includes(App.ui.spoolMat) ? App.ui.spoolMat : 'all';
@@ -37,7 +37,7 @@ VIEWS.bobines = {
     if (q) list = list.filter((x) => normalizeText(`${x.s.brand} ${x.s.material} ${x.s.color_name}`).includes(q));
     const rank = { empty: 0, critical: 1, low: 2, ok: 3 };
     // bobines à racheter en premier (vide, critique, bientôt vide), puis par matière et couleur
-    list.sort((a, b) => (view !== 'archived' ? rank[a.status] - rank[b.status] : 0) || a.s.material.localeCompare(b.s.material, 'fr') || (a.s.color_name || '').localeCompare(b.s.color_name || '', 'fr') || toNum(a.s.remaining_weight_g) - toNum(b.s.remaining_weight_g));
+    list.sort((a, b) => (view !== 'archived' ? rank[a.status] - rank[b.status] : 0) || a.s.material.localeCompare(b.s.material, SITE.lang) || (a.s.color_name || '').localeCompare(b.s.color_name || '', SITE.lang) || toNum(a.s.remaining_weight_g) - toNum(b.s.remaining_weight_g));
 
     return html`
       ${pageHeader('Bobines', plural(active.length, 'bobine active', 'bobines actives'), html`${active.length && canScan() ? btn('Scanner', { variant: 'ghost', icon: 'ScanLine', action: 'scan-label', title: 'Scanner l’étiquette QR d’une bobine' }) : ''}${active.length ? btn('Étiquettes', { variant: 'ghost', icon: 'QrCode', action: 'open-labels' }) : ''}${btn('Ajouter une bobine', { variant: 'primary', icon: 'Plus', action: 'spool-new' })}`)}
@@ -62,7 +62,7 @@ VIEWS.bobines = {
       ${list.length ? html`<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-3">${list.map(({ s, status }) => spoolCard(V, s, status))}</div>`
         : all.length
           ? emptyCard({ icon: 'SearchX', title: 'Aucune bobine ici', text: 'Change de filtre ou de recherche.' })
-          : emptyCard({ icon: 'Disc3', title: 'Ajoute ta première bobine', text: 'Prix, poids et couleur : Paulo3D calcule le coût au gramme et surveille le stock.', actions: btn('Ajouter une bobine', { variant: 'primary', icon: 'Plus', action: 'spool-new' }) })}`;
+          : emptyCard({ icon: 'Disc3', title: 'Ajoute ta première bobine', text: `Prix, poids et couleur : ${SITE.name} calcule le coût au gramme et surveille le stock.`, actions: btn('Ajouter une bobine', { variant: 'primary', icon: 'Plus', action: 'spool-new' }) })}`;
   },
 };
 
@@ -169,7 +169,7 @@ function openSpoolModal({ spool = null, duplicate = false }) {
   const editing = spool && !duplicate;
   const base = spool
     ? { ...pick(spool, SPOOL_FIELDS) }
-    : { brand: lsGet('p3d_last_brand', 'Bambu Lab'), material: 'PLA', color_name: '', color_hex: '#111111', price: null, initial_weight_g: 1000, tare_g: null, purchased_at: toLocalInput().slice(0, 10), notes: '' };
+    : { brand: lsGet(lsKey('last_brand'), 'Bambu Lab'), material: 'PLA', color_name: '', color_hex: '#111111', price: null, initial_weight_g: 1000, tare_g: null, purchased_at: toLocalInput().slice(0, 10), notes: '' };
   if (!editing) {
     base.id = uuid();
     base.archived = false;
@@ -293,7 +293,7 @@ function openSpoolModal({ spool = null, duplicate = false }) {
           const tare0 = spool.tare_g === null || spool.tare_g === undefined ? null : roundDb(spool.tare_g, 2);
           if (payload.tare_g === tare0) delete payload.tare_g;
         }
-        lsSet('p3d_last_brand', payload.brand);
+        lsSet(lsKey('last_brand'), payload.brand);
         const res = await runOp('spool.save', payload, { success: editing ? 'Bobine modifiée' : 'Bobine ajoutée' });
         if (opAccepted(res) && d.started) {
           await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: 'Poids restant à l’ajout' }, { success: 'Poids restant enregistré' });

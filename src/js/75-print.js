@@ -212,7 +212,7 @@ function reportPdf(V, r) {
   const n = doc.pageCount;
   for (let i = 0; i < n; i++) {
     doc.usePage(i);
-    doc.text(`Paulo3D · Bilan de ${r.range.label}`, M, doc.H - 26, { size: 7.5, color: GRAY });
+    doc.text(`${SITE.name} · Bilan de ${r.range.label}`, M, doc.H - 26, { size: 7.5, color: GRAY });
     doc.text(`Page ${i + 1}/${n}`, doc.W - M, doc.H - 26, { size: 7.5, color: GRAY, align: 'right' });
   }
   return doc.output();
@@ -253,7 +253,7 @@ async function sharePdf(filename, build) {
   try {
     pdf = build();
   } catch (e) {
-    console.error('[paulo3d] PDF', e);
+    console.error(`[${SITE.id}] PDF`, e);
     toast('Le PDF n’a pas pu être créé. Réessaie dans un instant.', { tone: 'bad' });
     return false;
   }
@@ -273,7 +273,7 @@ Actions['bilan-month'] = (el) => go(`#/bilan?m=${el.dataset.value}`);
 Actions['bilan-print'] = () => printSheet(reportHtml(Store.V, monthReport(Store.V, App.route.params.m)));
 Actions['bilan-pdf'] = () => {
   const r = monthReport(Store.V, App.route.params.m);
-  return sharePdf(`paulo3d-bilan-${r.range.ym}.pdf`, () => reportPdf(Store.V, r));
+  return sharePdf(`${SITE.id}-bilan-${r.range.ym}.pdf`, () => reportPdf(Store.V, r));
 };
 Actions['open-bilan'] = () => go('#/bilan');
 
@@ -350,7 +350,7 @@ const selectedLabelIds = () => [...(Labels.selected || [])].filter((id) => Store
 
 VIEWS.etiquettes = {
   render(V, route) {
-    const active = activeSpools(V).sort((a, b) => a.material.localeCompare(b.material, 'fr') || (a.color_name || '').localeCompare(b.color_name || '', 'fr'));
+    const active = activeSpools(V).sort((a, b) => a.material.localeCompare(b.material, SITE.lang) || (a.color_name || '').localeCompare(b.color_name || '', SITE.lang));
     if (!Labels.selected) {
       const wanted = String(route.params.ids || '').split(',').filter((id) => V.spools.has(id));
       Labels.selected = new Set(wanted.length ? wanted : active.map((s) => s.id));
@@ -398,7 +398,7 @@ Actions['labels-print'] = () => {
 Actions['labels-pdf'] = () => {
   const ids = selectedLabelIds();
   if (!ids.length || !globalThis.qrcode) return;
-  return sharePdf(`paulo3d-etiquettes-${dayKey(new Date().toISOString())}.pdf`, () => labelsPdf(Store.V, ids));
+  return sharePdf(`${SITE.id}-etiquettes-${dayKey(new Date().toISOString())}.pdf`, () => labelsPdf(Store.V, ids));
 };
 Actions['open-labels'] = (el) => {
   Labels.selected = null;

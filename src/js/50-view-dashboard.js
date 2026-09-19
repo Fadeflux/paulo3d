@@ -126,14 +126,14 @@ VIEWS.dashboard = {
               <div class="mt-2 text-sm text-slate-400">sur <span class="font-semibold text-slate-200">${fmtEur(s.revenue)}</span> encaissés · marge <span class="font-semibold ${s.marginRate === null ? 'text-slate-300' : s.marginRate >= 0 ? 'text-neon' : 'text-rose-300'}">${fmtPct(s.marginRate)}</span></div>
             </div>
             <div class="grid grid-cols-2 gap-2 text-center">
-              <div class="rounded-xl bg-white/[0.04] px-3 py-2"><div class="font-display text-xl font-bold tabular-nums text-slate-100">${fmtNum(s.salesCount)}</div><div class="text-[11px] text-slate-500">vente${s.salesCount > 1 ? 's' : ''}</div></div>
-              <div class="rounded-xl bg-white/[0.04] px-3 py-2"><div class="font-display text-xl font-bold tabular-nums text-slate-100">${fmtNum(s.piecesSold)}</div><div class="text-[11px] text-slate-500">pièce${s.piecesSold > 1 ? 's' : ''} vendue${s.piecesSold > 1 ? 's' : ''}</div></div>
+              <div class="rounded-xl bg-white/[0.04] px-3 py-2"><div class="font-display text-xl font-bold tabular-nums text-slate-100">${fmtNum(s.salesCount)}</div><div class="text-[11px] text-slate-500">${pl(s.salesCount, 'vente', 'ventes')}</div></div>
+              <div class="rounded-xl bg-white/[0.04] px-3 py-2"><div class="font-display text-xl font-bold tabular-nums text-slate-100">${fmtNum(s.piecesSold)}</div><div class="text-[11px] text-slate-500">${pl(s.piecesSold, 'pièce vendue', 'pièces vendues')}</div></div>
             </div>
           </div>
         </div>
         <a href="#/stock" class="card group flex flex-col justify-between p-5 transition hover:border-neon/25">
           <div class="flex items-center justify-between text-[13px] font-medium text-slate-400"><span class="flex items-center gap-2">${icon('Boxes', 'w-4 h-4 text-amber-300')}Stock prêt à vendre</span><span class="text-slate-600 group-hover:text-slate-300">${icon('ArrowUpRight', 'w-4 h-4')}</span></div>
-          <div class="mt-3 font-display text-3xl font-bold tabular-nums text-slate-50">${fmtNum(piecesReady)} <span class="text-base font-medium text-slate-400">pièce${piecesReady > 1 ? 's' : ''}</span></div>
+          <div class="mt-3 font-display text-3xl font-bold tabular-nums text-slate-50">${fmtNum(piecesReady)} <span class="text-base font-medium text-slate-400">${pl(piecesReady, 'pièce', 'pièces')}</span></div>
           <div class="mt-1 text-[13px] text-slate-400">valeur au coût de revient : <span class="font-semibold text-slate-200">${fmtEur(stockValue(V))}</span></div>
         </a>
       </div>
@@ -142,8 +142,8 @@ VIEWS.dashboard = {
         ${kpiCard({ label: "Chiffre d'affaires", value: fmtEur(s.revenue), sub: 'brut encaissé', ic: 'Euro', accent: 'text-cyan-300 bg-cyan-400/10' })}
         ${kpiCard({ label: 'Coûts engagés', value: fmtEur(s.costs), sub: 'pièces vendues, frais, pertes', ic: 'Receipt', accent: 'text-amber-300 bg-amber-400/10' })}
         ${kpiCard({ label: 'Taux de marge', value: fmtPct(s.marginRate), sub: 'bénéfice ÷ CA', ic: 'Percent', tone: s.marginRate === null ? 'text-slate-300' : s.marginRate >= 0 ? 'text-slate-50' : 'text-rose-300' })}
-        ${kpiCard({ label: 'Plastique transformé', value: fmtKg(s.gramsTotal), sub: `${fmtNum(s.piecesMade)} pièce${s.piecesMade > 1 ? 's' : ''} produite${s.piecesMade > 1 ? 's' : ''}`, ic: 'Weight', accent: 'text-violet-300 bg-violet-500/10' })}
-        ${kpiCard({ label: 'Taux de rebut', value: fmtPct(s.scrapRate), sub: `${fmtNum(s.piecesFailed)} raté${s.piecesFailed > 1 ? 's' : ''} · ${fmtEur(s.failureLoss)} perdus`, ic: 'Flame', tone: s.scrapRate > 10 ? 'text-rose-300' : 'text-slate-50', accent: 'text-rose-300 bg-rose-500/10' })}
+        ${kpiCard({ label: 'Plastique transformé', value: fmtKg(s.gramsTotal), sub: plural(s.piecesMade, 'pièce produite', 'pièces produites'), ic: 'Weight', accent: 'text-violet-300 bg-violet-500/10' })}
+        ${kpiCard({ label: 'Taux de rebut', value: fmtPct(s.scrapRate), sub: `${plural(s.piecesFailed, 'raté', 'ratés')} · ${fmtEur(s.failureLoss)} perdus`, ic: 'Flame', tone: s.scrapRate > 10 ? 'text-rose-300' : 'text-slate-50', accent: 'text-rose-300 bg-rose-500/10' })}
         ${kpiCard({ label: 'Alertes bobines', value: fmtNum(alerts.length), sub: alerts.length ? 'à racheter bientôt' : 'tout va bien', ic: 'TriangleAlert', tone: alerts.some((a) => a.status !== 'low') ? 'text-rose-300' : 'text-slate-50', accent: 'text-amber-300 bg-amber-400/10' })}
       </div>
 
@@ -310,7 +310,7 @@ VIEWS.historique = {
     const days = groupBy(shown, (e) => dayKey(e.date));
     const types = [{ value: 'all', label: 'Tout' }, ...Object.entries(EVENT_META).map(([value, m]) => ({ value, label: m.label }))];
     return html`
-      ${pageHeader('Historique', `${fmtNum(events.length)} évènement${events.length > 1 ? 's' : ''}`, html`${btn('Bilan du mois', { variant: 'ghost', icon: 'FileText', action: 'open-bilan' })}${btn('Exporter', { icon: 'Download', action: 'export-open' })}`)}
+      ${pageHeader('Historique', plural(events.length, 'évènement', 'évènements'), html`${btn('Bilan du mois', { variant: 'ghost', icon: 'FileText', action: 'open-bilan' })}${btn('Exporter', { icon: 'Download', action: 'export-open' })}`)}
       <div class="mb-4 flex flex-col gap-3">
         <div class="flex flex-wrap items-center gap-2">
           ${segmented('histPeriod', PERIODS, period)}
@@ -347,7 +347,7 @@ Actions['hist-search'] = debounce((el) => {
 }, 200);
 
 /* ---------- sauvegarde complète ---------- */
-const BACKUP_SNOOZE = 'p3d_backup_snooze';
+const BACKUP_SNOOZE = lsKey('backup_snooze');
 function backupReminder(V) {
   if (!Sync.backend || Sync.backend.kind !== 'supabase') return '';
   const b = backupStatus(V);
@@ -362,7 +362,7 @@ function backupReminder(V) {
 }
 async function downloadBackup() {
   const stampDay = toLocalInput().slice(0, 10); // date LOCALE : après minuit en France, pas celle de la veille (UTC)
-  const saved = await saveFile(`paulo3d-sauvegarde-${stampDay}.json`, exportJson(Store.V), 'application/json');
+  const saved = await saveFile(`${SITE.id}-sauvegarde-${stampDay}.json`, exportJson(Store.V), 'application/json');
   if (!saved) return;
   if (Sync.backend && Sync.backend.kind === 'supabase') {
     await Sync.enqueue('settings.save', { last_backup_at: new Date().toISOString() }, { wait: 0, silent: true });
@@ -396,10 +396,10 @@ Actions['export-open'] = () => {
     actions: {
       'x-json': () => downloadBackup(),
       'x-bilan': (el, e, m) => { m.close(); go('#/bilan'); },
-      'x-journal': () => saveFile(`paulo3d-journal-${stampDay}.csv`, exportCsvJournal(Store.V), 'text/csv;charset=utf-8'),
-      'x-sales': () => saveFile(`paulo3d-ventes-${stampDay}.csv`, exportCsvSales(Store.V), 'text/csv;charset=utf-8'),
-      'x-prod': () => saveFile(`paulo3d-productions-${stampDay}.csv`, exportCsvProductions(Store.V), 'text/csv;charset=utf-8'),
-      'x-spools': () => saveFile(`paulo3d-bobines-${stampDay}.csv`, exportCsvSpools(Store.V), 'text/csv;charset=utf-8'),
+      'x-journal': () => saveFile(`${SITE.id}-journal-${stampDay}.csv`, exportCsvJournal(Store.V), 'text/csv;charset=utf-8'),
+      'x-sales': () => saveFile(`${SITE.id}-ventes-${stampDay}.csv`, exportCsvSales(Store.V), 'text/csv;charset=utf-8'),
+      'x-prod': () => saveFile(`${SITE.id}-productions-${stampDay}.csv`, exportCsvProductions(Store.V), 'text/csv;charset=utf-8'),
+      'x-spools': () => saveFile(`${SITE.id}-bobines-${stampDay}.csv`, exportCsvSpools(Store.V), 'text/csv;charset=utf-8'),
     },
   });
 };

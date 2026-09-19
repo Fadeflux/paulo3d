@@ -115,7 +115,7 @@ const Screens = {
       <div class="relative mx-auto flex min-h-full w-full max-w-md flex-col justify-center px-5 py-10 pt-[max(2.5rem,env(safe-area-inset-top))]">
         <div class="mb-8 flex justify-center">${logoLockup({ size: 52 })}</div>
         ${content}
-        <p class="mt-8 text-center text-[11px] text-slate-500">Paulo3D · v${APP_VERSION}</p>
+        <p class="mt-8 text-center text-[11px] text-slate-500">${SITE.name} · v${APP_VERSION}</p>
       </div>`);
     const splash = document.getElementById('splash');
     if (splash) splash.remove();
@@ -137,7 +137,7 @@ const Screens = {
 
   // Page ouverte dans le cadre d'un autre site : rien d'utilisable, seulement un lien vers la vraie adresse
   framed() {
-    this.frame(html`<div class="card p-5 text-center"><div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-amber-400/10 text-amber-300">${icon('ShieldAlert', 'w-6 h-6')}</div><p class="text-sm text-slate-300">Par sécurité, Paulo3D ne s'ouvre pas à l'intérieur d'un autre site.</p><a class="btn btn-primary mt-4 h-11 rounded-xl px-4" href="${`${location.origin}${location.pathname}`}" target="_blank" rel="noopener noreferrer">Ouvrir Paulo3D</a></div>`);
+    this.frame(html`<div class="card p-5 text-center"><div class="mx-auto mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-amber-400/10 text-amber-300">${icon('ShieldAlert', 'w-6 h-6')}</div><p class="text-sm text-slate-300">Par sécurité, ${SITE.name} ne s'ouvre pas à l'intérieur d'un autre site.</p><a class="btn btn-primary mt-4 h-11 rounded-xl px-4" href="${`${location.origin}${location.pathname}`}" target="_blank" rel="noopener noreferrer">Ouvrir ${SITE.name}</a></div>`);
   },
 
   setup({ fromSettings = false } = {}) {
@@ -220,7 +220,7 @@ const Screens = {
     const backend = Boot.backend;
     if (!backend || backend.kind !== 'supabase') return this.setup();
     const cfg = lsGet(LS.supa, {});
-    const lastEmail = lsGet('p3d_last_email', '');
+    const lastEmail = lsGet(lsKey('last_email'), '');
     const el = this.frame(html`
       <div class="card p-5 sm:p-6">
         <h1 class="font-display text-2xl font-bold text-slate-50">${relogin ? 'Reconnexion' : 'Connexion'}</h1>
@@ -278,7 +278,7 @@ const Screens = {
       try {
         const { data, error } = await backend.sb.auth.signInWithPassword({ email, password });
         if (error) return show(authErrorMessage(error));
-        lsSet('p3d_last_email', email);
+        lsSet(lsKey('last_email'), email);
         if (relogin && Store.userId && data.user.id !== Store.userId) {
           toast('Connecté avec un autre compte : les actions en attente de l’ancien compte restent gardées pour lui.', { tone: 'warn' });
         }

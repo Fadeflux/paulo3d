@@ -491,7 +491,7 @@ function buildView(S, Q, ctx) {
       def.apply(V, op.payload, ctx);
       for (const k of def.keys(op.payload, ctx)) V.pending.add(k);
     } catch (e) {
-      console.warn('[paulo3d] action locale impossible à rejouer', op.type, e);
+      console.warn(`[${SITE.id}] action locale impossible à rejouer`, op.type, e);
     }
   }
   return V;
@@ -567,7 +567,7 @@ const IDB = {
   },
 };
 
-const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel('paulo3d') : null;
+const channel = typeof BroadcastChannel !== 'undefined' ? new BroadcastChannel(SITE.id) : null;
 
 // Colonnes numériques (le temps réel peut les envoyer en texte) et colonnes calculées par la base
 const NUMERIC_FIELDS = {
@@ -621,7 +621,7 @@ const Store = {
   async open(scope, userId) {
     this.close();
     this.userId = userId;
-    this.dbName = `paulo3d:${scope}`;
+    this.dbName = `${SITE.id}:${scope}`;
     this.S = emptyState();
     this.Q = [];
     this.meta = { lastPull: {}, lastReconcile: 0 };
@@ -654,7 +654,7 @@ const Store = {
       // anciennes copies : repères dans « meta » (seulement pour les tables qui n'ont pas encore le leur)
       this.meta = { ...this.meta, ...meta, lastPull: { ...(meta.lastPull || {}), ...lastPull } };
     } catch (e) {
-      console.warn('[paulo3d] stockage local indisponible', e);
+      console.warn(`[${SITE.id}] stockage local indisponible`, e);
       this.db = null;
       this.volatile = true;
     }
@@ -721,7 +721,7 @@ const Store = {
       this.broadcast();
       return true;
     } catch (e) {
-      console.error('[paulo3d] action non enregistrée sur l’appareil', e);
+      console.error(`[${SITE.id}] action non enregistrée sur l’appareil`, e);
       return false;
     }
   },
@@ -734,7 +734,7 @@ const Store = {
       this.broadcast();
       return true;
     } catch (e) {
-      console.error('[paulo3d] action confirmée mais non retirée de l’appareil', e);
+      console.error(`[${SITE.id}] action confirmée mais non retirée de l’appareil`, e);
       return false;
     }
   },
@@ -776,7 +776,7 @@ const Store = {
       for (const t of tables) this.dirty.add(t);
       this.metaDirty = true;
       this.persistError = (e && e.message) || String(e);
-      console.warn('[paulo3d] copie locale non enregistrée', e);
+      console.warn(`[${SITE.id}] copie locale non enregistrée`, e);
       App.updateChrome();
     }
   },
@@ -874,7 +874,7 @@ const Store = {
     try {
       def.apply(V, op.payload, this.ctx());
     } catch (e) {
-      console.warn('[paulo3d] suppression locale impossible', e);
+      console.warn(`[${SITE.id}] suppression locale impossible`, e);
       return;
     }
     for (const t of TABLES) {

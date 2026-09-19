@@ -65,7 +65,7 @@ Screens.mfa = function mfaScreen({ backend, user, factorId }) {
     <div class="card p-5 sm:p-6">
       <div class="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-neon/10 text-neon">${icon('ShieldCheck', 'w-6 h-6')}</div>
       <h1 class="font-display text-2xl font-bold text-slate-50">Code de sécurité</h1>
-      <p class="mt-1 text-sm text-slate-400">Ouvre ton appli d'authentification et tape le code à 6 chiffres affiché pour « Paulo3D ».</p>
+      <p class="mt-1 text-sm text-slate-400">Ouvre ton appli d'authentification et tape le code à 6 chiffres affiché pour « ${SITE.name} ».</p>
       <form class="mt-5 space-y-4" id="mfa-form" novalidate>
         ${field('Code à 6 chiffres', codeInput())}
         <div id="mfa-msg"></div>
@@ -205,7 +205,7 @@ async function openMfaEnroll() {
       if (f.status !== 'verified') await auth.unenroll({ factorId: f.id });
     }
   } catch { /* hors-ligne : l'activation échouera ci-dessous avec un message clair */ }
-  const { data, error } = await auth.enroll({ factorType: 'totp', friendlyName: 'Paulo3D' });
+  const { data, error } = await auth.enroll({ factorType: 'totp', friendlyName: SITE.name });
   if (error) return toast(authErrorMessage(error), { tone: 'bad', title: 'Double authentification' });
   const factorId = data.id;
   const qr = qrDataUrl(data.totp && data.totp.qr_code);

@@ -1,8 +1,10 @@
 // Construit le site à partir de src/ :
 //   docs/index.html (application complète en UN fichier : JS, CSS Tailwind compilé, icônes, logo)
 //   + sw.js (hors-ligne) + manifest + icônes
-// Usage : node tools/build.mjs          → docs/ (production, GitHub Pages)
-//         node tools/build.mjs --dev    → .dev/site/ (tests locaux, autorise 127.0.0.1)
+// Usage : node tools/build.mjs                  → Paulo3D (portugais) dans docs/ (production, GitHub Pages)
+//         node tools/build.mjs --site anais3d    → Anais3D (français) dans ../Anais3D/docs/
+//         node tools/build.mjs --dev             → .dev/site/ (tests locaux, code français tel quel, autorise 127.0.0.1)
+//         node tools/build.mjs --dev --site X    → .dev/X/ (le site X tel qu'il sera publié, pour l'essayer en local)
 import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
@@ -11,11 +13,19 @@ import { execFileSync } from 'node:child_process';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { CDN, FONT_CSS } from './cdn.mjs';
+import { SITES, DEV_SITE } from './sites.mjs';
+import { translate } from './i18n.mjs';
 
 const require = createRequire(import.meta.url);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const DEV = process.argv.includes('--dev');
-const OUT = DEV ? path.join(ROOT, '.dev', 'site') : path.join(ROOT, 'docs');
+const siteArg = process.argv.includes('--site') ? process.argv[process.argv.indexOf('--site') + 1] : null;
+if (siteArg && !SITES[siteArg]) {
+  console.error(`Site inconnu : ${siteArg} (connus : ${Object.keys(SITES).join(', ')})`);
+  process.exit(1);
+}
+const SITE = siteArg ? SITES[siteArg] : DEV ? DEV_SITE : SITES.paulo3d;
+const OUT = DEV ? path.join(ROOT, '.dev', siteArg || 'site') : path.resolve(ROOT, SITE.out);
 const read = (p) => fs.readFileSync(path.join(ROOT, p), 'utf8');
 const fail = (msg) => {
   console.error(`\n✖ BUILD ÉCHOUÉ : ${msg}\n`);
@@ -30,7 +40,23 @@ const jsDir = path.join(ROOT, 'src', 'js');
 const files = fs.readdirSync(jsDir).filter((f) => f.endsWith('.js')).sort();
 // fins de ligne LF partout : le navigateur calcule l'empreinte du script (CSP) sur du texte en LF
 const lf = (t) => t.replace(/\r\n?/g, '\n');
-let js = lf(files.map((f) => `/* ==== ${f} ==== */\n${fs.readFileSync(path.join(jsDir, f), 'utf8')}`).join('\n'));
+// langue du site : chaque texte visible remplacé par sa traduction (i18n/<langue>.json) ; un texte sans
+// traduction fait ÉCHOUER la construction (jamais de français oublié sur le site portugais)
+const catalogFile = path.join(ROOT, 'i18n', `${SITE.lang}.json`);
+const catalog = SITE.lang === 'fr' ? null : JSON.parse(fs.readFileSync(catalogFile, 'utf8'));
+const missingTexts = new Set();
+const sources = files.map((f) => {
+  const code = fs.readFileSync(path.join(jsDir, f), 'utf8');
+  if (!catalog) return [f, code];
+  const t = translate(code, catalog, f);
+  for (const m of t.missing) missingTexts.add(`${f} : ${JSON.stringify(m)}`);
+  return [f, t.code];
+});
+if (missingTexts.size) fail(`${missingTexts.size} texte(s) sans traduction ${SITE.lang} (node tools/i18n.mjs ${SITE.lang}) :\n  ${[...missingTexts].slice(0, 30).join('\n  ')}`);
+// identité du site (voir SITE dans 00-core.js)
+const siteMarkers = { __SITE_ID__: SITE.id, __SITE_NAME__: SITE.name, __SITE_PREFIX__: SITE.prefix, __SITE_LANG__: SITE.lang, __SITE_LOCALE__: SITE.locale, __SITE_LETTER__: SITE.letter };
+const withSite = (code) => code.replace(/'(__SITE_[A-Z]+__)'/g, (m, k) => (k in siteMarkers ? JSON.stringify(siteMarkers[k]) : m));
+let js = withSite(lf(sources.map(([f, code]) => `/* ==== ${f} ==== */\n${code}`).join('\n')));
 const htmlTpl = lf(read('src/index.html'));
 
 for (const k of ['jszip', 'qrcode', 'jsqr']) if (!js.includes(CDN[k])) fail(`l'adresse ${k} du code ne correspond pas à tools/cdn.mjs`);
@@ -83,6 +109,7 @@ js = js.replace("'__SRI_JSZIP__'", () => JSON.stringify(sri[CDN.jszip])).replace
 const pkg = JSON.parse(read('package.json'));
 const hash = crypto.createHash('sha256')
   .update(js).update(css).update(htmlTpl).update(read('src/sw.js')).update(read('src/manifest.webmanifest')).update(lf(read('tools/build.mjs'))).update(lf(read('tools/cdn.mjs')))
+  .update(JSON.stringify(SITE))
   .digest('hex').slice(0, 8);
 const version = `${pkg.version}-${hash}`;
 js = js.replace(/'__APP_VERSION__'/g, () => JSON.stringify(version));
@@ -90,7 +117,8 @@ if (/<\/script/i.test(js)) fail('le code contient « </script> », ce qui casser
 if (/'__[A-Z_]+__'/.test(js)) fail(`marqueur non remplacé dans le code : ${js.match(/'__[A-Z_]+__'/)[0]}`);
 
 // 6. Vérifications : syntaxe, noms jamais définis
-const appPath = path.join(ROOT, '.dev', 'app.js');
+// .dev/app.js = le code des tests (construction --dev) ; un site publié a son propre fichier d'analyse
+const appPath = path.join(ROOT, '.dev', DEV && !siteArg ? 'app.js' : `app-${SITE.id}.js`);
 fs.writeFileSync(appPath, js);
 try {
   execFileSync(process.execPath, ['--check', appPath], { stdio: 'pipe' });
@@ -98,14 +126,14 @@ try {
   fail(`erreur de syntaxe\n${e.stderr}`);
 }
 try {
-  execFileSync(process.execPath, [path.join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js'), '--no-ignore', '--max-warnings', '0', '.dev/app.js'], { cwd: ROOT, stdio: 'pipe' });
+  execFileSync(process.execPath, [path.join(ROOT, 'node_modules', 'eslint', 'bin', 'eslint.js'), '--no-ignore', '--max-warnings', '0', path.relative(ROOT, appPath)], { cwd: ROOT, stdio: 'pipe' });
 } catch (e) {
   fail(`vérification ESLint\n${e.stdout || ''}${e.stderr || ''}${e.stdout || e.stderr ? '' : e.message}`);
 }
 
 // 7. Logo de l'écran de chargement (même dessin que dans l'appli)
 const ctx = vm.createContext({ Intl, Math, Date, JSON, Object, Array, String, Number, RegExp, Map, Set, Symbol, Uint8Array, console });
-vm.runInContext(`${fs.readFileSync(path.join(jsDir, '00-core.js'), 'utf8')}\n;globalThis.__logo = String(logoMark(76, { tile: true, animated: true }));`, ctx);
+vm.runInContext(`${withSite(fs.readFileSync(path.join(jsDir, '00-core.js'), 'utf8'))}\n;globalThis.__logo = String(logoMark(76, { tile: true, animated: true }));`, ctx);
 const splashLogo = ctx.__logo;
 
 // 8. Politique de sécurité du contenu (CSP). Seuls peuvent s'exécuter :
@@ -135,7 +163,14 @@ for (const [what, text] of [['le code', js], ['index.html', htmlTpl]]) {
   if (bad) fail(`${what} contient « ${bad[0].trim()} » : code dans un attribut HTML, bloqué par la CSP (utiliser addEventListener)`);
 }
 
+const attr = (t) => String(t).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 let outHtml = htmlTpl
+  .replace('{{LANG}}', () => SITE.lang)
+  .replace('{{TITLE}}', () => attr(SITE.texts.title))
+  .replace('{{DESCRIPTION}}', () => attr(SITE.texts.description))
+  .replace('{{NAME}}', () => attr(SITE.name))
+  .replace('{{WORD}}', () => attr(SITE.name.replace(/3D$/, '')))
+  .replace('{{NOSCRIPT}}', () => attr(SITE.texts.noscript))
   .replace('{{FONT_CSS}}', () => FONT_CSS.replace(/&/g, '&amp;'))
   .replace('{{CSS}}', () => css)
   .replace('{{SPLASH_LOGO}}', () => splashLogo)
@@ -153,6 +188,8 @@ if (/\{\{[A-Z_]+\}\}/.test(outHtml)) fail(`marqueur non remplacé : ${outHtml.ma
 const cdnList = Object.values(CDN).map((url) => ({ url, cors: true }));
 const sw = read('src/sw.js')
   .replace("'__APP_VERSION__'", () => JSON.stringify(version))
+  .replace("'__SITE_PREFIX__'", () => JSON.stringify(SITE.prefix))
+  .replace("'__OFFLINE_TEXT__'", () => JSON.stringify(attr(SITE.texts.offline)))
   .replace('__CDN_URLS__', () => JSON.stringify(cdnList))
   .replace("'__FONT_CSS__'", () => JSON.stringify(FONT_CSS));
 if (/__[A-Z_]+__/.test(sw)) fail('marqueur non remplacé dans sw.js');
@@ -161,13 +198,23 @@ if (/__[A-Z_]+__/.test(sw)) fail('marqueur non remplacé dans sw.js');
 fs.mkdirSync(path.join(OUT, 'icons'), { recursive: true });
 fs.writeFileSync(path.join(OUT, 'index.html'), outHtml);
 fs.writeFileSync(path.join(OUT, 'sw.js'), sw);
-fs.copyFileSync(path.join(ROOT, 'src', 'manifest.webmanifest'), path.join(OUT, 'manifest.webmanifest'));
+// manifeste d'installation : nom, langue et raccourcis du site
+const manifest = JSON.parse(read('src/manifest.webmanifest'));
+manifest.name = SITE.texts.title;
+manifest.short_name = SITE.name;
+manifest.description = SITE.texts.description;
+manifest.lang = SITE.lang;
+manifest.shortcuts.forEach((sc, i) => {
+  sc.name = SITE.texts.shortcuts[i * 2];
+  sc.short_name = SITE.texts.shortcuts[i * 2 + 1];
+});
+fs.writeFileSync(path.join(OUT, 'manifest.webmanifest'), `${JSON.stringify(manifest, null, 2)}\n`);
 fs.writeFileSync(path.join(OUT, '.nojekyll'), '');
 fs.writeFileSync(path.join(OUT, 'robots.txt'), 'User-agent: *\nDisallow: /\n');
-const iconDir = path.join(ROOT, 'src', 'icons');
-if (!fs.existsSync(iconDir)) fail('icônes absentes : lance d’abord « node tools/icons.mjs »');
+const iconDir = path.join(ROOT, SITE.icons);
+if (!fs.existsSync(iconDir)) fail(`icônes absentes : lance d’abord « node tools/icons.mjs ${SITE.id} »`);
 for (const f of fs.readdirSync(iconDir)) fs.copyFileSync(path.join(iconDir, f), path.join(OUT, 'icons', f));
 
 const kb = (n) => `${(n / 1024).toFixed(0)} Ko`;
-console.log(`✔ Paulo3D ${version} → ${path.relative(ROOT, OUT)}/`);
+console.log(`✔ ${SITE.name} (${SITE.lang}) ${version} → ${path.relative(ROOT, OUT)}/`);
 console.log(`  index.html ${kb(Buffer.byteLength(outHtml))} (CSS ${kb(css.length)}) · ${files.length} fichiers JS · ${Object.keys(icons).length} icônes · CSP ${DEV ? 'dev (127.0.0.1 autorisé)' : 'production'}`);

@@ -151,7 +151,7 @@ function productionsTab(V) {
         <span class="min-w-0 flex-1"><span class="line-clamp-2 text-sm font-medium leading-snug text-slate-100">${p.item_name} × ${fmtNum(p.quantity)}</span>
           <span class="block truncate text-[12px] text-slate-500">${fmtDate(p.occurred_at, 'short')} · ${p.kind === 'failure' ? `raté à ${fmtNum(p.failed_pct)} %` : 'production'} · ${fmtG(p.grams_total)}</span></span>
         <span class="shrink-0 text-right"><span class="block font-display text-sm font-semibold tabular-nums ${p.kind === 'failure' ? 'text-rose-300' : 'text-slate-100'}">${fmtEur(p.total_cost)}</span>
-          <span class="block text-[12px] text-slate-500">${p.kind === 'failure' ? 'perte' : `${fmtEur(p.unit_cost)} / pièce`}</span>
+          <span class="block text-[12px] text-slate-500">${p.kind === 'failure' ? ui('perte') : `${fmtEur(p.unit_cost)} / pièce`}</span>
           ${V.pending.has(`productions:${p.id}`) ? badge('En attente', 'warn', { dot: true }) : ''}</span>
       </button>`;
     })}</div>`
@@ -165,7 +165,7 @@ Actions['production-open'] = (el) => openProductionDetails(el.dataset.id);
 // quantity : nombre de pièces prérempli (commande) ; onDone : appelé une fois la production acceptée
 function openProductionModal({ kind = 'production', templateId = null, quantity = null, onDone = null }) {
   const V0 = Store.V;
-  const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, SITE.lang));
   if (!templates.length) {
     Modal.open({
       title: kind === 'failure' ? 'Déclarer un print raté' : 'Lancer une production',
@@ -421,7 +421,7 @@ function openSaleModal({ templateId = null, itemName = null, order = null }) {
   const d = {
     id: uuid(),
     items: [firstItem],
-    channel: (order && order.channel) || lsGet('p3d_last_channel', 'direct'),
+    channel: (order && order.channel) || lsGet(lsKey('last_channel'), 'direct'),
     customer: order ? order.customer || '' : '',
     note: '',
     shipping_charged: null,
@@ -633,7 +633,7 @@ function openSaleModal({ templateId = null, itemName = null, order = null }) {
         if (p.shortages.length) return toast(`Stock insuffisant pour « ${p.shortages[0].item_name} ».`, { tone: 'bad' });
         d.busy = true;
         el.disabled = true;
-        lsSet('p3d_last_channel', d.channel);
+        lsSet(lsKey('last_channel'), d.channel);
         // vente d'une commande : la même action livre la commande (la base fait les deux ensemble)
         const res = await Sync.enqueue('sale.record', order ? { ...p.payload, order_id: order.id } : p.payload);
         d.busy = false;
@@ -772,7 +772,7 @@ function openProductionDetails(id) {
 function openAddStockModal({ templateId = null, itemName = null }) {
   const V0 = Store.V;
   // le template demandé est proposé même s'il est archivé : la liste affiche toujours celui qui recevra le stock
-  const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const templates = valuesOf(V0.templates).filter((t) => !t.archived || t.id === templateId).sort((a, b) => a.name.localeCompare(b.name, SITE.lang));
   const t0 = templateId ? V0.templates.get(templateId) : null;
   const d = {
     mode: t0 ? 'template' : itemName ? 'free' : templates.length ? 'template' : 'free',

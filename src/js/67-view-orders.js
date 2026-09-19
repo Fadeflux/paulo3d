@@ -7,7 +7,7 @@
 function fmtDueDate(s) {
   const m = String(s || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
   if (!m) return '';
-  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short' });
+  return new Date(+m[1], +m[2] - 1, +m[3]).toLocaleDateString(SITE.locale, { weekday: 'short', day: 'numeric', month: 'short' });
 }
 
 function orderDueBadge(o) {
@@ -104,7 +104,7 @@ function openOrderModal({ order = null, templateId = null }) {
   const V0 = Store.V;
   const st0 = settingsOf(V0);
   const editing = !!order;
-  const templates = valuesOf(V0.templates).filter((t) => !t.archived || (order && t.id === order.template_id)).sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+  const templates = valuesOf(V0.templates).filter((t) => !t.archived || (order && t.id === order.template_id)).sort((a, b) => a.name.localeCompare(b.name, SITE.lang));
   const priceFor = (tid) => {
     const t = tid ? Store.V.templates.get(tid) : null;
     return t ? templatePrice(Store.V, t).price : null;
@@ -114,7 +114,7 @@ function openOrderModal({ order = null, templateId = null }) {
     ? { ...pick(order, ORDER_FIELDS), mode: order.template_id ? 'template' : 'custom' }
     : {
       id: uuid(), customer: '', template_id: firstTpl, item_name: '', quantity: 1, unit_price: priceFor(firstTpl),
-      due_date: '', channel: lsGet('p3d_last_channel', null), note: '', status: 'todo', sale_id: null, mode: firstTpl ? 'template' : 'custom',
+      due_date: '', channel: lsGet(lsKey('last_channel'), null), note: '', status: 'todo', sale_id: null, mode: firstTpl ? 'template' : 'custom',
     };
   d.busy = false;
   Modal.open({

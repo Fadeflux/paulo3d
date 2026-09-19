@@ -237,7 +237,7 @@ function pdfDocument(title = '') {
       const f2 = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
       const d = new Date();
       const stamp = `${d.getFullYear()}${pad2(d.getMonth() + 1)}${pad2(d.getDate())}${pad2(d.getHours())}${pad2(d.getMinutes())}${pad2(d.getSeconds())}`;
-      const info = add(`<< /Title ${pdfHexText(title)} /Producer (Paulo3D) /CreationDate (D:${stamp}) >>`);
+      const info = add(`<< /Title ${pdfHexText(title)} /Producer (${pdfString(pdfChars(SITE.name))}) /CreationDate (D:${stamp}) >>`);
       const kids = pages.map((p) => {
         const stream = p.join('\n');
         const content = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);

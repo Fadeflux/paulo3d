@@ -1,8 +1,10 @@
-/* Paulo3D — service worker : l'application s'ouvre même sans réseau.
+/* Service worker : l'application s'ouvre même sans réseau.
    Les données ne passent JAMAIS par ici : elles sont gérées par l'appli (IndexedDB + Supabase). */
 const VERSION = '__APP_VERSION__';
-const SHELL_CACHE = `p3d-shell-${VERSION}`;
-const CDN_CACHE = 'p3d-cdn-v2';
+// noms propres au site : deux sites à la même adresse ne touchent jamais aux caches de l'autre
+const PREFIX = '__SITE_PREFIX__';
+const SHELL_CACHE = `${PREFIX}-shell-${VERSION}`;
+const CDN_CACHE = `${PREFIX}-cdn-v2`;
 const SHELL_FILES = [
   './',
   './index.html',
@@ -22,7 +24,7 @@ const CDN_HOSTS = ['cdn.jsdelivr.net', 'fonts.googleapis.com', 'fonts.gstatic.co
 // même adresse = même fichier, la copie est donc sûre)
 async function fromOldCaches(url) {
   for (const k of await caches.keys()) {
-    if (!k.startsWith('p3d-cdn-') || k === CDN_CACHE) continue;
+    if (!k.startsWith(`${PREFIX}-cdn-`) || k === CDN_CACHE) continue;
     const hit = await (await caches.open(k)).match(url, { ignoreVary: true });
     if (hit) return hit;
   }
@@ -77,7 +79,7 @@ self.addEventListener('activate', (event) => {
     // anciennes bibliothèques gardées tant que le nouveau cache ne les a pas TOUTES (sinon plus d'appli hors-ligne)
     const cdn = await caches.open(CDN_CACHE);
     const complete = (await Promise.all(CDN.map(({ url }) => cdn.match(url, { ignoreVary: true })))).every(Boolean);
-    await Promise.all(keys.filter((k) => (k.startsWith('p3d-shell-') && k !== SHELL_CACHE) || (complete && k.startsWith('p3d-cdn-') && k !== CDN_CACHE)).map((k) => caches.delete(k)));
+    await Promise.all(keys.filter((k) => (k.startsWith(`${PREFIX}-shell-`) && k !== SHELL_CACHE) || (complete && k.startsWith(`${PREFIX}-cdn-`) && k !== CDN_CACHE)).map((k) => caches.delete(k)));
     await self.clients.claim();
   })());
 });
@@ -105,7 +107,7 @@ self.addEventListener('fetch', (event) => {
         try {
           return await fetch(req);
         } catch (e) {
-          return new Response('<p style="font-family:system-ui;padding:24px">Paulo3D : pas de connexion et application pas encore installée sur cet appareil.</p>', { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
+          return new Response(`<p style="font-family:system-ui;padding:24px">${'__OFFLINE_TEXT__'}</p>`, { status: 503, headers: { 'Content-Type': 'text/html; charset=utf-8' } });
         }
       })());
       return;

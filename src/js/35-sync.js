@@ -106,7 +106,7 @@ const Sync = {
       const onMsg = async (ev) => {
         if (ev.data && ev.data.type === 'outbox' && ev.data.db === Store.dbName) {
           // sous le verrou d'envoi : jamais une copie périmée de la file pendant qu'un envoi la modifie
-          await withLock(`p3d-flush:${Store.dbName}`, () => Store.reloadQueue());
+          await withLock(`${SITE.prefix}-flush:${Store.dbName}`, () => Store.reloadQueue());
           Store.rebuild();
           this.emit();
         }
@@ -120,7 +120,7 @@ const Sync = {
     );
     // Nouvelle session : seules les actions refusées À CAUSE de la session repartent
     // (une action refusée par la base pour une autre raison reste refusée : sinon doublon)
-    withLock(`p3d-flush:${Store.dbName}`, async () => {
+    withLock(`${SITE.prefix}-flush:${Store.dbName}`, async () => {
       await Store.reloadQueue();
       const reset = Store.Q.filter((o) => (o.status === 'failed' ? !!(o.error && AUTH_CODES.includes(o.error.code)) : !!o.authRetried));
       for (const o of reset) {
@@ -131,7 +131,7 @@ const Sync = {
       .then((n) => {
         if (n) Store.rebuild();
       })
-      .catch((e) => console.error('[paulo3d] reprise des actions impossible', e))
+      .catch((e) => console.error(`[${SITE.id}] reprise des actions impossible`, e))
       .finally(() => this.kick(true));
   },
 
@@ -163,14 +163,14 @@ const Sync = {
   syncVerdict() {
     const { pending, failed } = this.summary();
     const s = this.state;
-    const actions = (n) => `${n} action${n > 1 ? 's' : ''}`;
+    const actions = (n) => plural(n, 'action', 'actions');
     if (s.needsLogin) return { tone: 'bad', message: pending ? `Reconnecte-toi : ${actions(pending)} en attente, rien n'est parti` : 'Reconnecte-toi pour synchroniser' };
     if (s.needsMfa) return { tone: 'bad', message: pending ? `Entre ton code de double authentification : ${actions(pending)} en attente, rien n'est parti` : 'Entre ton code de double authentification pour synchroniser' };
     if (!s.online) return { tone: 'warn', message: pending ? `Toujours pas de connexion · ${actions(pending)} en attente` : 'Toujours pas de connexion' };
     if (s.flushing || s.pulling) return { tone: 'warn', message: 'Toujours en cours : la base répond lentement' };
     if (s.lastError) return { tone: 'bad', message: s.lastError };
-    if (pending) return { tone: 'warn', message: `${actions(pending)} pas encore envoyée${pending > 1 ? 's' : ''}` };
-    if (failed) return { tone: 'bad', message: `${actions(failed)} refusée${failed > 1 ? 's' : ''} : voir ci-dessous` };
+    if (pending) return { tone: 'warn', message: `${pl(pending, `${actions(pending)} pas encore envoyée`, `${actions(pending)} pas encore envoyées`)}` };
+    if (failed) return { tone: 'bad', message: `${pl(failed, `${actions(failed)} refusée`, `${actions(failed)} refusées`)} : voir ci-dessous` };
     return { tone: 'ok', message: 'Synchronisation terminée' };
   },
 
@@ -234,7 +234,7 @@ const Sync = {
     this.state.flushing = true;
     this.emit();
     try {
-      await withLock(`p3d-flush:${Store.dbName}`, async () => {
+      await withLock(`${SITE.prefix}-flush:${Store.dbName}`, async () => {
         await Store.reloadQueue();
         for (;;) {
           if (this.state.needsLogin || this.state.needsMfa) {
@@ -313,7 +313,7 @@ const Sync = {
         }
       });
     } catch (e) {
-      console.error('[paulo3d] envoi interrompu', e);
+      console.error(`[${SITE.id}] envoi interrompu`, e);
     } finally {
       this.state.flushing = false;
       this.emit();
@@ -376,7 +376,7 @@ const Sync = {
         else this.scheduleRetry();
       } else {
         this.state.lastError = friendlyError(e);
-        console.error('[paulo3d] lecture de la base impossible', e);
+        console.error(`[${SITE.id}] lecture de la base impossible`, e);
       }
     } finally {
       this.state.pulling = false;
@@ -431,11 +431,11 @@ const Sync = {
     const s = this.state;
     if (this.backend && this.backend.kind === 'demo') {
       if (this.backend.offline()) return { tone: 'off', label: pending ? `Démo hors-ligne · ${pending}` : 'Démo hors-ligne', pending, failed };
-      return { tone: 'demo', label: failed ? `Démo · ${failed} refusée${failed > 1 ? 's' : ''}` : 'Mode démo', pending, failed };
+      return { tone: 'demo', label: failed ? `Démo · ${plural(failed, 'refusée', 'refusées')}` : 'Mode démo', pending, failed };
     }
     if (s.needsLogin) return { tone: 'bad', label: 'Reconnexion requise', pending, failed };
     if (s.needsMfa) return { tone: 'bad', label: 'Code requis', pending, failed };
-    if (failed) return { tone: 'bad', label: `${failed} action${failed > 1 ? 's' : ''} refusée${failed > 1 ? 's' : ''}`, pending, failed };
+    if (failed) return { tone: 'bad', label: `${plural(failed, 'action refusée', 'actions refusées')}`, pending, failed };
     if (!s.online) return { tone: 'off', label: pending ? `Hors-ligne · ${pending} en attente` : 'Hors-ligne', pending, failed };
     if (pending || s.flushing) return { tone: 'warn', label: pending ? `Envoi · ${pending} en attente` : 'Envoi…', pending, failed };
     if (s.lastError) return { tone: 'bad', label: 'Base injoignable', pending, failed };

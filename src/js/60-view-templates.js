@@ -13,9 +13,9 @@ VIEWS.templates = {
     const showArchived = App.ui.tplArchived === 'yes' && archivedCount > 0;
     let list = all.filter((t) => !!t.archived === showArchived);
     if (q) list = list.filter((t) => normalizeText(`${t.name} ${t.description || ''}`).includes(q));
-    list.sort((a, b) => a.name.localeCompare(b.name, 'fr'));
+    list.sort((a, b) => a.name.localeCompare(b.name, SITE.lang));
     return html`
-      ${pageHeader('Templates', `${fmtNum(all.length - archivedCount)} modèle${all.length - archivedCount > 1 ? 's' : ''} au catalogue`, btn('Nouveau template', { variant: 'primary', icon: 'Plus', action: 'tpl-new' }))}
+      ${pageHeader('Templates', `${plural(all.length - archivedCount, 'modèle', 'modèles')} au catalogue`, btn('Nouveau template', { variant: 'primary', icon: 'Plus', action: 'tpl-new' }))}
       <div class="mb-4 flex flex-wrap items-center gap-2">
         <div class="relative min-w-[12rem] flex-1">
           <span class="pointer-events-none absolute inset-y-0 left-3 flex items-center text-slate-500">${icon('Search', 'w-4 h-4')}</span>

@@ -14,7 +14,7 @@ const DEFAULT_CHANNELS = [
 ];
 
 const DEFAULT_SETTINGS = {
-  workshop_name: 'Paulo3D',
+  workshop_name: SITE.name,
   machine_rate: 0.3,
   labor_rate: 20,
   filament_price_kg: 20,
@@ -122,7 +122,7 @@ function backupStatus(V, now = Date.now()) {
 
 /* ---------- machines ---------- */
 function activeMachines(V) {
-  return valuesOf(V.machines).filter((m) => !m.archived).sort((a, b) => (b.is_default - a.is_default) || a.name.localeCompare(b.name, 'fr'));
+  return valuesOf(V.machines).filter((m) => !m.archived).sort((a, b) => (b.is_default - a.is_default) || a.name.localeCompare(b.name, SITE.lang));
 }
 // Choix d'une machine : les machines actives, plus celle déjà choisie si elle a été archivée
 // (sinon la liste afficherait « Par défaut » alors que le calcul utilise la machine archivée)
@@ -499,7 +499,7 @@ function stockGroups(V) {
     if (g.template) g.item_name = g.template.name;
     out.push(g);
   }
-  return out.sort((a, b) => (b.qty > 0) - (a.qty > 0) || a.item_name.localeCompare(b.item_name, 'fr'));
+  return out.sort((a, b) => (b.qty > 0) - (a.qty > 0) || a.item_name.localeCompare(b.item_name, SITE.lang));
 }
 
 function stockForTemplate(V, templateId) {
@@ -571,7 +571,7 @@ function saleTitle(V, sale) {
   const items = saleItemsOf(V, sale.id);
   if (!items.length) return 'Vente';
   const first = `${items[0].quantity > 1 ? `${items[0].quantity} × ` : ''}${items[0].item_name}`;
-  return items.length > 1 ? `${first} + ${items.length - 1} autre${items.length > 2 ? 's' : ''}` : first;
+  return items.length > 1 ? `${first} + ${pl(items.length - 1, `${items.length - 1} autre`, `${items.length - 1} autres`)}` : first;
 }
 
 /* ---------- statistiques ---------- */
@@ -733,7 +733,7 @@ function historyEvents(V, { range = null, type = 'all', q = '' } = {}) {
       type: p.kind === 'failure' ? 'failure' : 'production',
       date: p.occurred_at,
       title: `${p.kind === 'failure' ? 'Print raté' : 'Production'} · ${p.item_name}`,
-      sub: `${p.quantity} pièce${p.quantity > 1 ? 's' : ''}${p.kind === 'failure' ? ` · échec à ${fmtNum(p.failed_pct)} %` : ''} · ${fmtG(p.grams_total)}`,
+      sub: `${plural(p.quantity, 'pièce', 'pièces')}${p.kind === 'failure' ? ` · échec à ${fmtNum(p.failed_pct)} %` : ''} · ${fmtG(p.grams_total)}`,
       amount: -toNum(p.total_cost),
     });
   }
@@ -759,12 +759,12 @@ function historyEvents(V, { range = null, type = 'all', q = '' } = {}) {
   }
   for (const l of valuesOf(V.production_stock)) {
     if (l.production_id) continue;
-    ev.push({ key: `production_stock:${l.id}`, table: 'production_stock', id: l.id, type: 'stock', date: l.occurred_at, title: `Stock ajouté · ${l.item_name}`, sub: `${l.quantity} pièce${l.quantity > 1 ? 's' : ''} · ${fmtEur(l.unit_cost)} / pièce`, amount: null });
+    ev.push({ key: `production_stock:${l.id}`, table: 'production_stock', id: l.id, type: 'stock', date: l.occurred_at, title: `Stock ajouté · ${l.item_name}`, sub: `${plural(l.quantity, 'pièce', 'pièces')} · ${fmtEur(l.unit_cost)} / pièce`, amount: null });
   }
   for (const [group, adjs] of groupBy(valuesOf(V.stock_adjustments), (a) => a.group_id)) {
     const lot = V.production_stock.get(adjs[0].lot_id);
     const qty = sum(adjs, (a) => a.quantity);
-    ev.push({ key: `stock_adjustments:${group}`, table: 'stock_adjustments', id: group, type: 'adjust', date: adjs[0].occurred_at, title: `Retrait du stock · ${lot ? lot.item_name : 'pièce'}`, sub: `${qty} pièce${qty > 1 ? 's' : ''} · ${ADJUST_REASONS[adjs[0].reason] || adjs[0].reason}`, amount: -sum(adjs, (a) => toNum(a.quantity) * toNum(a.unit_cost)) });
+    ev.push({ key: `stock_adjustments:${group}`, table: 'stock_adjustments', id: group, type: 'adjust', date: adjs[0].occurred_at, title: `Retrait du stock · ${lot ? lot.item_name : 'pièce'}`, sub: `${plural(qty, 'pièce', 'pièces')} · ${ADJUST_REASONS[adjs[0].reason] || adjs[0].reason}`, amount: -sum(adjs, (a) => toNum(a.quantity) * toNum(a.unit_cost)) });
   }
   const nq = normalizeText(q);
   return ev
@@ -803,7 +803,7 @@ function exportCsvProductions(V) {
 }
 function exportCsvSpools(V) {
   const st = settingsOf(V);
-  const rows = valuesOf(V.spools).map((s) => [s.brand, s.material, s.color_name, s.color_hex, toNum(s.price), toNum(s.initial_weight_g), toNum(s.remaining_weight_g), round(spoolCpg(s), 5), SPOOL_STATUS[spoolStatus(s, st)].label, s.archived ? 'oui' : 'non', s.purchased_at || '']);
+  const rows = valuesOf(V.spools).map((s) => [s.brand, s.material, s.color_name, s.color_hex, toNum(s.price), toNum(s.initial_weight_g), toNum(s.remaining_weight_g), round(spoolCpg(s), 5), SPOOL_STATUS[spoolStatus(s, st)].label, s.archived ? ui('oui') : ui('non'), s.purchased_at || '']);
   return toCsv(['Marque', 'Matière', 'Couleur', 'Code couleur', 'Prix (€)', 'Poids initial (g)', 'Poids restant (g)', 'Prix au gramme (€)', 'Statut', 'Archivée', "Date d'achat"], rows);
 }
 function exportCsvJournal(V) {
@@ -813,5 +813,5 @@ function exportCsvJournal(V) {
 function exportJson(V) {
   const tables = {};
   for (const t of TABLES) tables[t] = valuesOf(V[t]);
-  return JSON.stringify({ app: 'Paulo3D', schema: SCHEMA_VERSION, version: APP_VERSION, exported_at: new Date().toISOString(), tables }, null, 2);
+  return JSON.stringify({ app: SITE.name, schema: SCHEMA_VERSION, version: APP_VERSION, exported_at: new Date().toISOString(), tables }, null, 2);
 }

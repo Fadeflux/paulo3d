@@ -1,18 +1,28 @@
 'use strict';
 /* =============================================================================
-   Paulo3D — socle : constantes, formats, HTML sûr, icônes, logo
+   Socle : constantes, formats, HTML sûr, icônes, logo
    ============================================================================= */
 
 const APP_VERSION = '__APP_VERSION__';
 const SCHEMA_VERSION = 3;
 
+// Identité du site, remplie à la construction (tools/sites.mjs) : le même code sert plusieurs sites.
+// prefix / id : noms de TOUT ce que le site garde dans le navigateur. Deux sites publiés à la même
+// adresse (fadeflux.github.io) partagent le même stockage : sans noms distincts, l'un lirait les
+// réglages de l'autre ou effacerait sa copie hors-ligne.
+const SITE = { id: '__SITE_ID__', name: '__SITE_NAME__', prefix: '__SITE_PREFIX__', lang: '__SITE_LANG__', locale: '__SITE_LOCALE__', letter: '__SITE_LETTER__' };
+const lsKey = (k) => `${SITE.prefix}_${k}`;
+// Mot isolé AFFICHÉ (« actif », « jamais »…) : marqué pour être traduit sur un site dans une autre
+// langue (tools/i18n.mjs) ; les mots isolés non marqués sont des clés du code et ne bougent jamais
+const ui = (s) => s;
+
 const LS = {
-  supa: 'p3d_supabase',
-  mode: 'p3d_mode',
-  period: 'p3d_period',
-  ui: 'p3d_ui',
-  demoOffline: 'p3d_demo_offline',
-  demoSeeded: 'p3d_demo_seeded',
+  supa: lsKey('supabase'),
+  mode: lsKey('mode'),
+  period: lsKey('period'),
+  ui: lsKey('ui'),
+  demoOffline: lsKey('demo_offline'),
+  demoSeeded: lsKey('demo_seeded'),
 };
 
 const MATERIALS = ['PLA', 'PLA Silk', 'PLA Mat', 'PLA-CF', 'PETG', 'PETG-CF', 'ABS', 'ASA', 'TPU', 'PA', 'PC', 'PVA', 'Résine', 'Autre'];
@@ -71,12 +81,12 @@ function html(strings, ...vals) {
 
 /* ---------- nombres ---------- */
 const NF = {
-  eur: new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }),
-  eur0: new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
-  n0: new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 0 }),
-  n1: new Intl.NumberFormat('fr-FR', { maximumFractionDigits: 1 }),
-  n2: new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
-  n3: new Intl.NumberFormat('fr-FR', { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
+  eur: new Intl.NumberFormat(SITE.locale, { style: 'currency', currency: 'EUR' }),
+  eur0: new Intl.NumberFormat(SITE.locale, { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }),
+  n0: new Intl.NumberFormat(SITE.locale, { maximumFractionDigits: 0 }),
+  n1: new Intl.NumberFormat(SITE.locale, { maximumFractionDigits: 1 }),
+  n2: new Intl.NumberFormat(SITE.locale, { minimumFractionDigits: 2, maximumFractionDigits: 2 }),
+  n3: new Intl.NumberFormat(SITE.locale, { minimumFractionDigits: 3, maximumFractionDigits: 3 }),
 };
 
 const isNum = (v) => typeof v === 'number' && Number.isFinite(v);
@@ -99,7 +109,13 @@ function fmtEur(v, { sign = false, compact = false } = {}) {
 }
 const fmtNum = (v, d = 0) => (d === 0 ? NF.n0 : d === 1 ? NF.n1 : d === 2 ? NF.n2 : NF.n3).format(toNum(v));
 // Accord en français : 0 et 1 au singulier (« 1 pièce prête », « 3 pièces prêtes »)
-const plural = (n, one, many) => `${fmtNum(n)} ${Math.abs(Math.round(toNum(n))) >= 2 ? many : one}`;
+// Accord selon la langue du site : en français 0 et 1 au singulier ; en portugais, seul 1 l'est (« 0 peças »)
+const isPlural = (n) => {
+  const a = Math.abs(Math.round(toNum(n)));
+  return SITE.lang === 'fr' ? a >= 2 : a !== 1;
+};
+const pl = (n, one, many) => (isPlural(n) ? many : one);
+const plural = (n, one, many) => `${fmtNum(n)} ${pl(n, one, many)}`;
 function fmtG(g) {
   const n = toNum(g);
   if (Math.abs(n) >= 1000) return `${NF.n2.format(n / 1000)} kg`;
@@ -145,18 +161,24 @@ function fromLocalInput(v) {
 const MONTHS = ['janv.', 'févr.', 'mars', 'avr.', 'mai', 'juin', 'juil.', 'août', 'sept.', 'oct.', 'nov.', 'déc.'];
 const MONTHS_LONG = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre'];
 
+// Date longue : ordre et petits mots traduits avec le reste de l'appli (« 18 septembre 2026 à 14:05 »,
+// en portugais « 18 de setembro de 2026 às 14:05 »)
+const DATE_LONG = ui('%j %mois %an à %h');
+
 function fmtDate(iso, style = 'short') {
   if (!iso) return '—';
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return '—';
   if (style === 'day') return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}`;
   if (style === 'time') return `${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
-  if (style === 'long') return `${d.getDate()} ${MONTHS_LONG[d.getMonth()]} ${d.getFullYear()} à ${pad2(d.getHours())}:${pad2(d.getMinutes())}`;
+  if (style === 'long') {
+    return DATE_LONG.replace('%j', d.getDate()).replace('%mois', MONTHS_LONG[d.getMonth()]).replace('%an', d.getFullYear()).replace('%h', `${pad2(d.getHours())}:${pad2(d.getMinutes())}`);
+  }
   return `${pad2(d.getDate())}/${pad2(d.getMonth() + 1)}/${String(d.getFullYear()).slice(2)}`;
 }
 
 function fmtRelative(iso, now = Date.now()) {
-  if (!iso) return 'jamais';
+  if (!iso) return ui('jamais');
   const diff = now - new Date(iso).getTime();
   if (diff < 45000) return "à l'instant";
   if (diff < 3600000) return `il y a ${Math.round(diff / 60000)} min`;
@@ -265,7 +287,7 @@ function icon(name, cls = 'w-5 h-5') {
   return raw(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="${esc(cls)}" aria-hidden="true">${inner}</svg>`);
 }
 
-/* ---------- logo Paulo3D : le P imprimé couche par couche ---------- */
+/* ---------- logo : la lettre du site (P, A…) imprimée couche par couche ---------- */
 let logoSeq = 0;
 function logoMark(size = 40, { tile = true, animated = false } = {}) {
   const id = `p3dclip${++logoSeq}`;
@@ -275,8 +297,8 @@ function logoMark(size = 40, { tile = true, animated = false } = {}) {
     const fill = i < 3 ? '#223244' : i === 3 ? '#22D3EE' : '#22F2A0';
     layers.push(`<rect x="30" y="${y}" width="70" height="${i === 10 ? 6 : 5}" fill="${fill}"${animated && i >= 3 ? ` class="p3d-layer" style="animation-delay:${(10 - i) * 90}ms"` : ''}/>`);
   }
-  return raw(`<svg viewBox="0 0 120 120" width="${size}" height="${size}" role="img" aria-label="Paulo3D">
-    <defs><clipPath id="${id}"><path clip-rule="evenodd" d="M34 22H66C84 22 94 34 94 50C94 66 84 78 66 78H56V98H34ZM56 40V60H65C71 60 74 56 74 50C74 44 71 40 65 40Z"/></clipPath></defs>
+  return raw(`<svg viewBox="0 0 120 120" width="${size}" height="${size}" role="img" aria-label="${esc(SITE.name)}">
+    <defs><clipPath id="${id}"><path clip-rule="evenodd" d="${SITE.letter}"/></clipPath></defs>
     ${tile ? '<rect x="1" y="1" width="118" height="118" rx="27" fill="#0F151C" stroke="#243244" stroke-width="1.5"/>' : ''}
     <g clip-path="url(#${id})">${layers.join('')}</g>
     <line x1="22" y1="45.5" x2="30" y2="45.5" stroke="#22D3EE" stroke-width="1.5" stroke-linecap="round"/>
@@ -288,7 +310,7 @@ function logoLockup({ size = 40, tagline = true } = {}) {
   return html`<div class="flex items-center gap-3 select-none">
     ${logoMark(size)}
     <div class="leading-none">
-      <div class="font-display font-bold tracking-tight text-[22px] text-slate-50">Paulo<span class="text-neon">3D</span></div>
+      <div class="font-display font-bold tracking-tight text-[22px] text-slate-50">${SITE.name.replace(/3D$/, '')}<span class="text-neon">3D</span></div>
       ${tagline ? html`<div class="mt-1 text-[11px] text-slate-500">Atelier d'impression 3D</div>` : ''}
     </div>
   </div>`;

@@ -90,7 +90,7 @@ const Boot = {
   // Hors-ligne avec un jeton expiré : on garde l'accès à la copie locale, la reconnexion se fera au retour du réseau
   storedUser(backend) {
     try {
-      const raw = localStorage.getItem(`p3d-auth-${backend.ref}`);
+      const raw = localStorage.getItem(`${SITE.prefix}-auth-${backend.ref}`);
       if (!raw) return null;
       const s = JSON.parse(raw);
       const sess = s && (s.currentSession || s);
@@ -128,7 +128,7 @@ const Boot = {
         lsSet(LS.demoSeeded, true);
       } catch (e) {
         // la démo reste utilisable (vide ou partielle) ; « Remplir avec des exemples » reste possible dans Paramètres
-        console.error('[paulo3d] exemples de démo non ajoutés', e);
+        console.error(`[${SITE.id}] exemples de démo non ajoutés`, e);
         toast("Les exemples de la démo n'ont pas pu être ajoutés (mémoire de l'appareil pleine ?).", { tone: 'warn' });
       }
     }
@@ -142,17 +142,17 @@ const Boot = {
       if (Sync.confirmedWhileAway > 0) {
         const n = Sync.confirmedWhileAway;
         Sync.confirmedWhileAway = 0;
-        toast(`${n} action${n > 1 ? 's' : ''} en attente ${n > 1 ? 'sont maintenant enregistrées' : 'est maintenant enregistrée'} dans la base.`, { tone: 'ok', title: 'Synchronisé' });
+        toast(pl(n, '1 action en attente est maintenant enregistrée dans la base.', `${fmtNum(n)} actions en attente sont maintenant enregistrées dans la base.`), { tone: 'ok', title: 'Synchronisé' });
       }
       if (Sync.skippedWhileAway > 0) {
         const n = Sync.skippedWhileAway;
         Sync.skippedWhileAway = 0;
-        toast(`${n > 1 ? `${n} actions en attente n'ont` : "1 action en attente n'a"} rien enregistré : l'élément avait été supprimé sur un autre appareil.`, { tone: 'warn', title: 'Action ignorée' });
+        toast(pl(n, "1 action en attente n'a rien enregistré : l'élément avait été supprimé sur un autre appareil.", `${fmtNum(n)} actions en attente n'ont rien enregistré : les éléments avaient été supprimés sur un autre appareil.`), { tone: 'warn', title: 'Action ignorée' });
       }
       if (Sync.failedWhileAway > 0) {
         const n = Sync.failedWhileAway;
         Sync.failedWhileAway = 0;
-        toast(`${n} action${n > 1 ? 's ont été refusées' : ' a été refusée'} par la base. Ouvre la synchronisation pour voir pourquoi.`, { tone: 'bad', title: 'Action refusée' });
+        toast(pl(n, '1 action a été refusée par la base. Ouvre la synchronisation pour voir pourquoi.', `${fmtNum(n)} actions ont été refusées par la base. Ouvre la synchronisation pour voir pourquoi.`), { tone: 'bad', title: 'Action refusée' });
       }
     });
   },
@@ -277,14 +277,14 @@ const Boot = {
         document.addEventListener('visibilitychange', () => {
           if (document.visibilityState === 'visible') this.checkOfflineCache();
         });
-      }).catch((e) => console.warn('[paulo3d] service worker non installé', e));
+      }).catch((e) => console.warn(`[${SITE.id}] service worker non installé`, e));
     };
     if (document.readyState === 'complete') register();
     else window.addEventListener('load', register);
   },
 
   // Un autre site à la même adresse peut vider tous les caches du navigateur (son service worker
-  // supprime ce qui n'est pas à lui) : sans réparation, Paulo3D ne s'ouvrirait plus sans réseau.
+  // supprime ce qui n'est pas à lui) : sans réparation, l'appli ne s'ouvrirait plus sans réseau.
   // Dès qu'elle est ouverte avec du réseau, la copie hors-ligne est reconstituée.
   async checkOfflineCache() {
     try {
@@ -295,7 +295,7 @@ const Boot = {
       // requête via caches.open(), et une réparation ratée (4G faible) laisse aussi un cache
       // vide. Tester son existence ne réparait donc presque jamais : on vérifie qu'il contient
       // la page de l'appli — exactement ce que le service worker sert hors-ligne.
-      const shell = await caches.open(`p3d-shell-${APP_VERSION}`);
+      const shell = await caches.open(`${SITE.prefix}-shell-${APP_VERSION}`);
       if ((await shell.match('./index.html')) || (await shell.match('./'))) return;
       reg.active.postMessage({ type: 'RECACHE', version: APP_VERSION });
     } catch { /* vérification facultative */ }
@@ -328,7 +328,7 @@ const Boot = {
 
 if (typeof document !== 'undefined') {
   const go0 = () => Boot.start().catch((e) => {
-    console.error('[paulo3d] démarrage impossible', e);
+    console.error(`[${SITE.id}] démarrage impossible`, e);
     Screens.fatal(`Démarrage impossible : ${e && e.message ? e.message : e}`);
   });
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', go0);

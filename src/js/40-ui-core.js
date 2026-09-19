@@ -223,7 +223,7 @@ function withBusy(el, result) {
   };
   result.then(done, (e) => {
     done();
-    console.error('[paulo3d] action interrompue', e);
+    console.error(`[${SITE.id}] action interrompue`, e);
   });
   return result;
 }
@@ -547,8 +547,8 @@ const App = {
     if (foot) {
       foot.innerHTML = String(html`<div class="rounded-2xl border border-white/[0.06] bg-ink-900/70 p-3 text-[12px] text-slate-400">
         <div class="flex items-center justify-between"><span>Dernière synchro</span><span class="text-slate-300">${Sync.state.lastPullAt ? fmtRelative(Sync.state.lastPullAt) : '—'}</span></div>
-        <div class="mt-1 flex items-center justify-between"><span>Temps réel</span><span class="${Sync.state.realtime === 'on' ? 'text-neon' : 'text-slate-500'}">${Sync.backend && Sync.backend.kind === 'demo' ? 'démo' : Sync.state.realtime === 'on' ? 'actif' : 'coupé'}</span></div>
-      </div><div class="px-1 text-[11px] text-slate-500">Paulo3D · v${APP_VERSION}</div>`);
+        <div class="mt-1 flex items-center justify-between"><span>Temps réel</span><span class="${Sync.state.realtime === 'on' ? 'text-neon' : 'text-slate-500'}">${Sync.backend && Sync.backend.kind === 'demo' ? 'démo' : Sync.state.realtime === 'on' ? ui('actif') : 'coupé'}</span></div>
+      </div><div class="px-1 text-[11px] text-slate-500">${SITE.name} · v${APP_VERSION}</div>`);
     }
     const banner = $('#banner');
     if (banner) banner.innerHTML = String(renderBanner());
@@ -598,10 +598,10 @@ Actions['sync-panel'] = () => {
           <div class="rounded-2xl border ${t.border} ${t.bg} p-4">
             <div class="flex items-center gap-2 font-semibold ${t.text}">${icon(s.tone === 'ok' ? 'CloudCheck' : s.tone === 'bad' ? 'CircleAlert' : 'CloudOff', 'w-5 h-5')}${s.label}</div>
             <div class="mt-2 grid grid-cols-2 gap-2 text-[12px] text-slate-400">
-              <div>Dernière lecture : <span class="text-slate-200">${Sync.state.lastPullAt ? fmtRelative(Sync.state.lastPullAt) : 'jamais'}</span></div>
+              <div>Dernière lecture : <span class="text-slate-200">${Sync.state.lastPullAt ? fmtRelative(Sync.state.lastPullAt) : ui('jamais')}</span></div>
               <div>Dernier envoi : <span class="text-slate-200">${Sync.state.lastConfirmAt ? fmtRelative(Sync.state.lastConfirmAt) : '—'}</span></div>
-              <div>Temps réel : <span class="text-slate-200">${Sync.state.realtime === 'on' ? 'actif' : 'coupé (relecture toutes les 5 min)'}</span></div>
-              <div>Mémoire locale : <span class="text-slate-200">${Store.volatile ? 'indisponible' : 'active'}</span></div>
+              <div>Temps réel : <span class="text-slate-200">${Sync.state.realtime === 'on' ? ui('actif') : 'coupé (relecture toutes les 5 min)'}</span></div>
+              <div>Mémoire locale : <span class="text-slate-200">${Store.volatile ? ui('indisponible') : ui('active')}</span></div>
             </div>
           </div>
           ${failed.length ? html`<h3 class="mb-2 mt-5 text-sm font-semibold text-rose-200">Refusées par la base (${failed.length})</h3>
