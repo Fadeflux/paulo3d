@@ -14,6 +14,7 @@ const SCHEMA_VERSION = 3;
 const SITE = {
   id: '__SITE_ID__', name: '__SITE_NAME__', prefix: '__SITE_PREFIX__', lang: '__SITE_LANG__', locale: '__SITE_LOCALE__', letter: '__SITE_LETTER__',
   supaUrl: '__SITE_SUPA_URL__', supaKey: '__SITE_SUPA_KEY__',
+  mfaRequired: '__SITE_MFA__', // '1' : double authentification obligatoire
 };
 const lsKey = (k) => `${SITE.prefix}_${k}`;
 // Mot isolé AFFICHÉ (« actif », « jamais »…) : marqué pour être traduit sur un site dans une autre

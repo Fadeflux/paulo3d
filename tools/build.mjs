@@ -57,6 +57,7 @@ if (missingTexts.size) fail(`${missingTexts.size} texte(s) sans traduction ${SIT
 const siteMarkers = {
   __SITE_ID__: SITE.id, __SITE_NAME__: SITE.name, __SITE_PREFIX__: SITE.prefix, __SITE_LANG__: SITE.lang, __SITE_LOCALE__: SITE.locale, __SITE_LETTER__: SITE.letter,
   __SITE_SUPA_URL__: SITE.supabase ? SITE.supabase.url : '', __SITE_SUPA_KEY__: SITE.supabase ? SITE.supabase.key : '',
+  __SITE_MFA__: SITE.mfaRequired ? '1' : '',
 };
 if (SITE.supabase && !/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(SITE.supabase.url)) fail(`adresse Supabase du site invalide : ${SITE.supabase.url}`);
 const withSite = (code) => code.replace(/'(__SITE_[A-Z_]+?__)'/g, (m, k) => (k in siteMarkers ? JSON.stringify(siteMarkers[k]) : m));

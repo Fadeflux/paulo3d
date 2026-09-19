@@ -296,6 +296,7 @@ const Screens = {
         if (relogin && Store.userId && data.user.id !== Store.userId) {
           toast('Connecté avec un autre compte : les actions en attente de l’ancien compte restent gardées pour lui.', { tone: 'warn' });
         }
+        if (await Mfa.needsEnroll(backend)) return Screens.mfaEnroll({ backend, user: data.user });
         const factorId = await Mfa.factorToVerify(backend);
         if (factorId) return Screens.mfa({ backend, user: data.user, factorId });
         await Boot.enter(backend, data.user);

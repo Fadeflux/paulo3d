@@ -1227,5 +1227,9 @@
  "marge {} %": "margem {} %",
  "Plus": "Mais",
  "version {}": "versão {}",
- "La connexion à la base n’a pas pu démarrer. Vérifie internet puis recharge la page.": "Não foi possível iniciar a ligação à base de dados. Verifica a internet e recarrega a página."
+ "La connexion à la base n’a pas pu démarrer. Vérifie internet puis recharge la page.": "Não foi possível iniciar a ligação à base de dados. Verifica a internet e recarrega a página.",
+ "Double authentification obligatoire : active-la pour continuer.": "Autenticação de dois fatores obrigatória: ativa-a para continuar.",
+ "Protège ton compte": "Protege a tua conta",
+ "Pour entrer dans {}, active la double authentification : en plus du mot de passe, un code à 6 chiffres affiché par une appli gratuite sur ton téléphone. 2 minutes, une seule fois.": "Para entrares no {}, ativa a autenticação de dois fatores: além da palavra-passe, um código de 6 dígitos mostrado por uma app gratuita no teu telemóvel. 2 minutos, uma única vez.",
+ "Activer maintenant": "Ativar agora"
 }

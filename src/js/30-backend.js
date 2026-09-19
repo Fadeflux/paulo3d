@@ -82,6 +82,7 @@ const DB_MESSAGES = [
   [/^Cette commande est annulée/, () => 'Cette commande est annulée : remets-la « à faire » avant de la livrer.'],
   [/^Cette commande est déjà livrée/, () => 'Cette commande est déjà livrée (vente déjà enregistrée, peut-être sur un autre appareil).'],
   [/^Code de double authentification requis\.$/, () => 'Code de double authentification requis.'],
+  [/^Double authentification obligatoire/, () => 'Double authentification obligatoire : active-la pour continuer.'],
   [/^Consommation négative refusée\.$/, () => 'Consommation négative refusée.'],
   [/^Des pièces de cette production ont déjà été vendues/, () => "Des pièces de cette production ont déjà été vendues : supprime d'abord les ventes concernées."],
   [/^Identifiant de production manquant\.$/, () => 'Identifiant de production manquant.'],

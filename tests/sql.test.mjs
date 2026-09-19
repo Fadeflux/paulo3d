@@ -713,3 +713,34 @@ test('commandes : chacun les siennes, états contrôlés, suppression définitiv
     assert.equal(del.orders[0].sale_id, null);
   });
 });
+
+test('durcissement.sql : 2FA obligatoire, nouvelles tables fermées et en RLS, données intactes, relançable', async () => {
+  const fs = await import('node:fs');
+  const DURCI = fs.readFileSync(new URL('../supabase/durcissement.sql', import.meta.url), 'utf8');
+  const avant = await one(admin, 'select count(*)::int as n from public.spools');
+  await admin.query(DURCI);
+  await admin.query(DURCI); // relancé : aucune erreur
+  assert.equal((await one(admin, 'select count(*)::int as n from public.spools')).n, avant.n, 'aucune donnée touchée');
+  try {
+    // compte SANS code, session mot de passe seul : refus explicite qui fait ouvrir l'activation
+    const err = await asUser(admin, A, (c) => c.query('select * from public.spools'), { aal: 'aal1' }).then(() => null, (e) => e);
+    assert.ok(err, 'refusé sans double authentification');
+    assert.equal(err.hint, 'P3D2F');
+    assert.match(err.message, /^Double authentification obligatoire/);
+    // avec le code : accès normal
+    await asUser(admin, A, (c) => c.query('select * from public.spools'), { aal: 'aal2' });
+    // schema.sql relancé plus tard : le réglage reste « obligatoire »
+    await admin.query(SCHEMA_SQL);
+    assert.equal((await one(admin, 'select p3d_private.mfa_obligatoire() as v')).v, true);
+    // nouvelle table : RLS active d'office, fermée aux visiteurs sans compte
+    await admin.query('create table public.p3d_essai_durci (id int)');
+    const t = await one(admin, "select c.relrowsecurity as rls, has_table_privilege('anon', 'public.p3d_essai_durci', 'select') as anon_sel from pg_class c where c.oid = 'public.p3d_essai_durci'::regclass");
+    assert.deepEqual(t, { rls: true, anon_sel: false });
+    await admin.query('create function public.p3d_essai_fn() returns int language sql as $$ select 1 $$');
+    assert.equal((await one(admin, "select has_function_privilege('anon', 'public.p3d_essai_fn()', 'execute') as x")).x, true,
+      'fonctions : PUBLIC garde le droit par défaut de Postgres (le schéma retire lui-même chaque fonction)');
+  } finally {
+    await admin.query('drop table if exists public.p3d_essai_durci; drop function if exists public.p3d_essai_fn();');
+    await admin.query("create or replace function p3d_private.mfa_obligatoire() returns boolean language sql immutable set search_path = '' as 'select false'");
+  }
+});

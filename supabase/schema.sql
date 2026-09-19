@@ -1161,6 +1161,19 @@ create schema if not exists p3d_private;
 revoke all on schema p3d_private from public;
 grant usage on schema p3d_private to authenticated;
 
+-- Double authentification OBLIGATOIRE ? Réglage du projet : faux à la création, mis à vrai par
+-- supabase/durcissement.sql. Créée seulement si elle manque : relancer ce script ne remet pas le
+-- réglage à faux.
+do $$
+begin
+  if not exists (select 1 from pg_proc p join pg_namespace n on n.oid = p.pronamespace
+                 where n.nspname = 'p3d_private' and p.proname = 'mfa_obligatoire' and p.pronargs = 0) then
+    create function p3d_private.mfa_obligatoire() returns boolean language sql immutable set search_path = '' as 'select false';
+  end if;
+end
+$$;
+revoke execute on function p3d_private.mfa_obligatoire() from public;
+
 create or replace function p3d_private.mfa_ok()
 returns boolean
 language plpgsql
@@ -1169,10 +1182,15 @@ security definer
 set search_path = ''
 as $$
 begin
-  if coalesce((select auth.jwt()) ->> 'aal', 'aal1') <> 'aal2'
-     and exists (select 1 from auth.mfa_factors f
-                 where f.user_id = (select auth.uid()) and f.status = 'verified') then
-    raise exception using errcode = '42501', message = 'Code de double authentification requis.', hint = 'P3D2F';
+  if coalesce((select auth.jwt()) ->> 'aal', 'aal1') <> 'aal2' then
+    if exists (select 1 from auth.mfa_factors f
+               where f.user_id = (select auth.uid()) and f.status = 'verified') then
+      raise exception using errcode = '42501', message = 'Code de double authentification requis.', hint = 'P3D2F';
+    end if;
+    -- obligatoire et pas encore activée : l'appli ouvre l'activation (même indice P3D2F)
+    if (select p3d_private.mfa_obligatoire()) then
+      raise exception using errcode = '42501', message = 'Double authentification obligatoire : active-la pour continuer.', hint = 'P3D2F';
+    end if;
   end if;
   return true;
 end

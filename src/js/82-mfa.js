@@ -50,6 +50,18 @@ const Mfa = {
     return f ? f.id : null;
   },
 
+  // Obligatoire et pas encore activée ? (liste lue sur le serveur ; hors-ligne : non, la base protège)
+  async needsEnroll(backend) {
+    if (!SITE.mfaRequired) return false;
+    try {
+      const { data, error } = await backend.sb.auth.mfa.listFactors();
+      if (error) return false;
+      return !((data && data.totp) || []).some((f) => f.status === 'verified');
+    } catch {
+      return false;
+    }
+  },
+
   async verify(backend, factorId, code) {
     const { error } = await backend.sb.auth.mfa.challengeAndVerify({ factorId, code });
     return error || null;
@@ -106,6 +118,20 @@ Screens.mfa = function mfaScreen({ backend, user, factorId }) {
   if (window.matchMedia('(pointer: fine)').matches) form.code.focus();
 };
 
+// Double authentification obligatoire, pas encore activée : on ne rentre pas sans l'activer
+Screens.mfaEnroll = function mfaEnrollScreen({ backend, user }) {
+  const el = this.frame(html`
+    <div class="card p-5 sm:p-6">
+      <div class="mb-3 grid h-12 w-12 place-items-center rounded-2xl bg-neon/10 text-neon">${icon('ShieldCheck', 'w-6 h-6')}</div>
+      <h1 class="font-display text-2xl font-bold text-slate-50">Protège ton compte</h1>
+      <p class="mt-1 text-sm text-slate-400">Pour entrer dans ${SITE.name}, active la double authentification : en plus du mot de passe, un code à 6 chiffres affiché par une appli gratuite sur ton téléphone. 2 minutes, une seule fois.</p>
+      <button class="btn btn-primary mt-5 h-12 w-full rounded-xl text-[15px]" id="mfa-go">${icon('ShieldCheck', 'w-5 h-5')}<span>Activer maintenant</span></button>
+      <div class="mt-4 text-[13px]"><button class="text-slate-400 hover:text-slate-200" id="mfa-logout">Se déconnecter</button></div>
+    </div>`);
+  el.querySelector('#mfa-go').addEventListener('click', () => openMfaEnroll({ onDone: () => Boot.enter(backend, user), backend }));
+  el.querySelector('#mfa-logout').addEventListener('click', () => Boot.logout());
+};
+
 // Pendant l'utilisation : la base réclame le code (synchronisation en pause, actions gardées)
 async function openMfaCodeModal() {
   const backend = Boot.backend;
@@ -115,6 +141,10 @@ async function openMfaCodeModal() {
     factorId = await Mfa.factorFromServer(backend);
   } catch (e) {
     return toast(authErrorMessage(e), { tone: 'bad', title: 'Double authentification' });
+  }
+  if (!factorId && SITE.mfaRequired) {
+    // obligatoire mais plus aucun code sur le compte (retiré après un téléphone perdu) : on le réactive
+    return openMfaEnroll({ onDone: () => { Sync.state.needsMfa = false; Sync.emit(); Sync.kick(); } });
   }
   if (!factorId) {
     // plus de code sur le compte (désactivé ailleurs) : la synchro peut reprendre
@@ -167,7 +197,7 @@ function mfaSection() {
   const footer = !i.loaded || i.error
     ? (i.error ? btn('Réessayer', { size: 'sm', variant: 'ghost', icon: 'RefreshCw', action: 'mfa-reload' }) : '')
     : on
-      ? btn('Désactiver', { size: 'sm', variant: 'ghost', icon: 'ShieldOff', action: 'mfa-disable' })
+      ? (SITE.mfaRequired ? '' : btn('Désactiver', { size: 'sm', variant: 'ghost', icon: 'ShieldOff', action: 'mfa-disable' }))
       : btn('Activer', { size: 'sm', variant: 'primary', icon: 'ShieldCheck', action: 'mfa-enable' });
   return settingsSection('s-mfa', 'ShieldCheck', 'Double authentification', subtitle, body, footer);
 }
@@ -194,8 +224,7 @@ function decodeURIComponentSafe(s) {
   }
 }
 
-async function openMfaEnroll() {
-  const backend = Boot.backend;
+async function openMfaEnroll({ onDone = null, backend = Boot.backend } = {}) {
   if (!backend || backend.kind !== 'supabase') return;
   const auth = backend.sb.auth.mfa;
   // une activation abandonnée laisse un facteur « non vérifié » : on repart de zéro
@@ -240,6 +269,10 @@ async function openMfaEnroll() {
         if (err) return setFieldError(m.el, 'code', authErrorMessage(err));
         done = true;
         m.close();
+        if (onDone) {
+          toast('Double authentification activée : le code sera demandé à chaque nouvelle connexion.', { tone: 'ok', title: 'Compte protégé' });
+          return onDone();
+        }
         toast('Double authentification activée : le code sera demandé à chaque nouvelle connexion.', { tone: 'ok', title: 'Compte protégé' });
         Mfa.reset();
         Mfa.load(backend);
@@ -253,7 +286,7 @@ Actions['mfa-enable'] = () => openMfaEnroll();
 Actions['mfa-disable'] = async () => {
   const backend = Boot.backend;
   const f = Mfa.info.factor;
-  if (!backend || !f) return;
+  if (!backend || !f || SITE.mfaRequired) return;
   const ok = await confirmBox({
     title: 'Désactiver la double authentification ?',
     message: 'Le mot de passe seul suffira de nouveau pour entrer dans l’appli.',

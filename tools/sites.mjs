@@ -21,6 +21,8 @@ export const SITES = {
     // base du site, inscrite dans l'appli : aucun lien ne peut la relier à une autre base (piège :
     // un faux lien #setup= menant à la base d'un pirate aurait capté mot de passe et code 2FA)
     supabase: { url: 'https://tjweersjswfuiutuqnvv.supabase.co', key: 'sb_publishable_EiMrFp8Usn-4W7iMfM0azQ_empCbI0B' },
+    // double authentification exigée (la base l'exige aussi : supabase/durcissement.sql)
+    mfaRequired: true,
     out: '.dev/prod/paulo3d', // docs/ = redirection de l'ancienne adresse (tools/redirect-old.mjs)
     icons: 'src/icons',
     texts: {
@@ -40,6 +42,7 @@ export const SITES = {
     locale: 'fr-FR',
     letter: LETTERS.A,
     supabase: { url: 'https://jvfvbsiicctnuvdpjska.supabase.co', key: 'sb_publishable_83IKpTyF2IO4Z-1asWuQZg_LYFq2zZa' },
+    mfaRequired: true,
     out: '../Anais3D/docs',
     icons: 'src/icons-anais3d',
     texts: {
@@ -55,7 +58,7 @@ export const SITES = {
 
 // Construction de test (tests automatiques, imitation locale) : le code tel qu'il est écrit, en français,
 // avec les noms de Paulo3D
-export const DEV_SITE = { ...SITES.paulo3d, lang: 'fr', locale: 'fr-FR', out: '.dev/site', texts: SITES.anais3d.texts, name: 'Paulo3D', supabase: null };
+export const DEV_SITE = { ...SITES.paulo3d, lang: 'fr', locale: 'fr-FR', out: '.dev/site', texts: SITES.anais3d.texts, name: 'Paulo3D', supabase: null, mfaRequired: false };
 DEV_SITE.texts = {
   ...SITES.anais3d.texts,
   title: "Paulo3D — Atelier d'impression 3D",

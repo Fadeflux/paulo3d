@@ -36,7 +36,7 @@ function stringsOf(src) {
 }
 
 test('identité : Paulo3D garde ses noms d’origine, Anais3D a les siens, rien en commun', () => {
-  const id = (x) => plain({ ...x.SITE, letter: undefined, supaUrl: undefined, supaKey: undefined });
+  const id = (x) => plain({ ...x.SITE, letter: undefined, supaUrl: undefined, supaKey: undefined, mfaRequired: undefined });
   assert.deepEqual(id(pt), { id: 'paulo3d', name: 'Paulo3D', prefix: 'p3d', lang: 'pt-PT', locale: 'pt-PT' });
   assert.deepEqual(id(fr), { id: 'anais3d', name: 'Anais3D', prefix: 'a3d', lang: 'fr', locale: 'fr-FR' });
   // appareils déjà installés : Paulo3D retrouve sa configuration, sa session et ses actions en attente
@@ -163,4 +163,18 @@ test('matières : une bobine saisie en français retrouve une ligne de modèle e
     assert.equal(app.materialKey('Autre'), app.materialKey('Outro'));
     assert.notEqual(app.materialKey('PLA'), app.materialKey('PETG'));
   }
+});
+
+test('double authentification obligatoire sur les deux sites publiés, pas en version de test', () => {
+  assert.equal(pt.SITE.mfaRequired, '1');
+  assert.equal(fr.SITE.mfaRequired, '1');
+  const dev = loadApp({});
+  assert.equal(dev.SITE.mfaRequired, '', 'version de test : facultative');
+  for (const id of ['paulo3d', 'anais3d']) {
+    const src = code(id);
+    // activation imposée avant d'entrer, à la connexion ET au redémarrage de l'appli
+    assert.equal((src.match(/if \(await Mfa\.needsEnroll\(backend\)\) return Screens\.mfaEnroll\(/g) || []).length, 2, `${id} : activation imposée aux 2 entrées`);
+    assert.match(src, /SITE\.mfaRequired \? '' : btn\(/, `${id} : pas de bouton « Désactiver »`);
+  }
+  assert.equal(pt.dbMessage('Double authentification obligatoire : active-la pour continuer.'), 'Autenticação de dois fatores obrigatória: ativa-a para continuar.');
 });

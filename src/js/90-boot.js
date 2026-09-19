@@ -90,6 +90,8 @@ const Boot = {
     }
     if (!user && navigator.onLine === false) user = this.storedUser(backend);
     if (!user) return Screens.login();
+    // double authentification obligatoire et jamais activée : activation avant d'entrer
+    if (await Mfa.needsEnroll(backend)) return Screens.mfaEnroll({ backend, user });
     // double authentification activée et session « mot de passe seul » (appli fermée sur l'écran du code)
     const factorId = await Mfa.factorToVerify(backend);
     if (factorId) return Screens.mfa({ backend, user, factorId });
