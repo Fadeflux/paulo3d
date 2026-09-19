@@ -23,7 +23,7 @@ export const SITES = {
     supabase: { url: 'https://tjweersjswfuiutuqnvv.supabase.co', key: 'sb_publishable_EiMrFp8Usn-4W7iMfM0azQ_empCbI0B' },
     // double authentification exigée (la base l'exige aussi : supabase/durcissement.sql)
     mfaRequired: true,
-    out: '.dev/prod/paulo3d', // docs/ = redirection de l'ancienne adresse (tools/redirect-old.mjs)
+    out: 'docs', // GitHub Pages : https://fadeflux.github.io/paulo3d/
     icons: 'src/icons',
     texts: {
       title: 'Paulo3D — Oficina de impressão 3D',

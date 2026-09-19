@@ -126,7 +126,7 @@ const Boot = {
 
   // ⚠️ (19/09) DÉMÉNAGEMENT fadeflux.github.io -> Railway. Une action faite hors-ligne sur l'ancienne
   // adresse et pas encore envoyée restait dans le stockage de CETTE adresse-là, que la nouvelle ne peut
-  // pas lire : elle était perdue sans un mot. La page de redirection (tools/redirect-old.mjs) la lit et
+  // pas lire : elle était perdue sans un mot. La page de redirection (tools/railway-redirect.mjs ; avant : redirect-old.mjs) la lit et
   // l'apporte dans le lien (#p3d-import=…) ; on la garde le temps de la connexion, puis on la remet dans
   // la file de l'appareil (même compte seulement), d'où elle part comme n'importe quelle action.
   captureOldAddressImport() {

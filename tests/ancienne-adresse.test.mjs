@@ -1,6 +1,8 @@
-// Déménagement fadeflux.github.io -> Railway : une action faite hors-ligne sur l'ancienne adresse et pas
-// encore envoyée n'est plus perdue. Code RÉEL des deux côtés :
-//   - la page de redirection publiée (docs/index.html, script inline) avec un faux stockage du téléphone ;
+// Déménagement d'adresse : une action faite hors-ligne sur l'ancienne adresse et pas encore envoyée
+// n'est plus perdue. 19/09 : fadeflux.github.io -> Railway, puis RETOUR Railway -> fadeflux.github.io.
+// Code RÉEL des deux côtés :
+//   - la page de redirection servie par Railway (tools/railway-redirect.mjs, script inline) avec un faux
+//     stockage du téléphone ;
 //   - la nouvelle appli (.dev/app.js, Boot.captureOldAddressImport / importOldAddress).
 //
 // ⚠️ (19/09) La redirection gardait la copie locale « pour ne pas perdre les actions », mais la nouvelle
@@ -15,8 +17,8 @@ import { U, boot, resetStore, fakeBackend, cleanup, sleep } from './sync-harness
 
 afterEach(cleanup);
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const PAGE = fs.readFileSync(path.join(ROOT, 'docs', 'index.html'), 'utf8');
-const SCRIPT = PAGE.match(/<script>([\s\S]*?)<\/script>/)[1];
+const pageDe = (id) => fs.readFileSync(path.join(ROOT, '.dev', `redirect-${id}`, 'site', 'index.html'), 'utf8').match(/<script>([\s\S]*?)<\/script>/)[1];
+const SCRIPT = pageDe('paulo3d');
 
 // Faux IndexedDB : { nomDeBase: { cle: valeur } } — juste ce que la page utilise.
 function fauxIDB(bases, { sansListe = false } = {}) {
@@ -60,7 +62,7 @@ async function lancerPage(bases, opts = {}) {
   ctx.window.indexedDB = idb;
   Object.defineProperty(ctx.localStorage, 'keys', { value: () => [...ls.keys()] });
   vm.runInContext('Object.keys = (function(k){ return function(o){ return o && o.keys ? o.keys() : k(o); }; })(Object.keys);', ctx);
-  vm.runInContext(SCRIPT, ctx);
+  vm.runInContext(opts.script || SCRIPT, ctx);
   for (let i = 0; i < 100 && !cible; i++) await sleep(5);
   return { cible, ouvertes, ls, msg: ctx.__msg };
 }
@@ -72,7 +74,7 @@ const VENTE = { id: 'op-1', type: 'sale.record', status: 'pending', seq: 3, crea
 test('page de l’ancienne adresse : les actions en attente partent avec la redirection', async () => {
   const bases = { 'paulo3d:ref:u1': { 'op:op-1': VENTE, 'meta:x': { a: 1 } }, 'autre-site:z': { 'op:zz': { id: 'zz' } } };
   const r = await lancerPage(bases);
-  assert.ok(r.cible && r.cible.startsWith('https://paulo3d.up.railway.app/#p3d-import='), r.cible);
+  assert.ok(r.cible && r.cible.startsWith('https://fadeflux.github.io/paulo3d/#p3d-import='), r.cible);
   const p = b64Decode(r.cible.split('#p3d-import=')[1]);
   assert.deepEqual(p, [{ db: 'paulo3d:ref:u1', ops: [VENTE] }], 'seules les actions (op:…) de Paulo3D, accents intacts');
   assert.deepEqual(r.ouvertes, ['paulo3d:ref:u1'], 'les bases des autres sites ne sont jamais ouvertes');
@@ -80,14 +82,23 @@ test('page de l’ancienne adresse : les actions en attente partent avec la redi
   assert.match(r.msg, /1 ação ainda não enviada/);
 });
 
+test('Anais3D : ses propres actions seulement, message en français, vers sa nouvelle adresse', async () => {
+  const ls = { 'anais3d:ref:u9': { 'op:op-1': VENTE }, 'paulo3d:ref:u1': { 'op:op-2': { id: 'op-2' } } };
+  const r = await lancerPage(ls, { script: pageDe('anais3d') });
+  assert.ok(r.cible.startsWith('https://fadeflux.github.io/anais3d/#p3d-import='), r.cible);
+  assert.deepEqual(b64Decode(r.cible.split('#p3d-import=')[1]), [{ db: 'anais3d:ref:u9', ops: [VENTE] }]);
+  assert.deepEqual(r.ouvertes, ['anais3d:ref:u9'], 'jamais la base de Paulo3D');
+  assert.match(r.msg, /1 action pas encore envoyée/);
+});
+
 test('page de l’ancienne adresse : rien en attente -> redirection simple, lien d’origine gardé', async () => {
   const r = await lancerPage({ 'paulo3d:ref:u1': { 'meta:x': {} } }, { hash: '#/bobines?peser=abc' });
-  assert.equal(r.cible, 'https://paulo3d.up.railway.app/#/bobines?peser=abc');
+  assert.equal(r.cible, 'https://fadeflux.github.io/paulo3d/#/bobines?peser=abc');
 });
 
 test('page de l’ancienne adresse : navigateur sans liste des bases -> redirection simple (jamais bloquée)', async () => {
   const r = await lancerPage({ 'paulo3d:ref:u1': { 'op:op-1': VENTE } }, { sansListe: true });
-  assert.equal(r.cible, 'https://paulo3d.up.railway.app/');
+  assert.equal(r.cible, 'https://fadeflux.github.io/paulo3d/');
 });
 
 function nouvelleAppli(lien) {
