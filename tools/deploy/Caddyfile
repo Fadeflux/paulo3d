@@ -20,4 +20,16 @@
 	@frais path / /index.html /sw.js /manifest.webmanifest
 	header @frais Cache-Control "no-cache"
 	file_server
+	# page introuvable : mêmes protections que le reste du site
+	handle_errors {
+		header {
+			Strict-Transport-Security "max-age=31536000"
+			X-Content-Type-Options "nosniff"
+			X-Frame-Options "DENY"
+			Referrer-Policy "no-referrer"
+			Content-Security-Policy "default-src 'none'; frame-ancestors 'none'"
+			-Server
+		}
+		respond "{err.status_code} {err.status_text}" {err.status_code}
+	}
 }

@@ -84,7 +84,7 @@ function reportTables(V, r) {
     {
       title: 'Productions et prints ratés',
       empty: 'Aucune production ce mois-ci.',
-      cols: [['Date', 42], ['Pièce', 190, 'wrap'], ['Type', 90], ['Quantité', 55, 'num'], ['Filament', 65, 'num'], ['Coût', 73, 'num']],
+      cols: [['Date', 42], ['Pièce', 190, 'wrap'], [ui('Type'), 90], ['Quantité', 55, 'num'], ['Filament', 65, 'num'], ['Coût', 73, 'num']],
       rows: r.prods.map((p) => [fmtDate(p.occurred_at, 'short'), p.item_name, p.kind === 'failure' ? `Raté (${fmtNum(p.failed_pct)} %)` : 'Production', fmtNum(p.quantity), fmtG(p.grams_total), fmtEur(p.total_cost)]),
     },
     {

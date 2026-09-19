@@ -170,7 +170,7 @@ const Sync = {
     if (s.flushing || s.pulling) return { tone: 'warn', message: 'Toujours en cours : la base répond lentement' };
     if (s.lastError) return { tone: 'bad', message: s.lastError };
     if (pending) return { tone: 'warn', message: `${pl(pending, `${actions(pending)} pas encore envoyée`, `${actions(pending)} pas encore envoyées`)}` };
-    if (failed) return { tone: 'bad', message: `${pl(failed, `${actions(failed)} refusée`, `${actions(failed)} refusées`)} : voir ci-dessous` };
+    if (failed) return { tone: 'bad', message: ui(`${pl(failed, `${actions(failed)} refusée`, `${actions(failed)} refusées`)} : voir ci-dessous`) };
     return { tone: 'ok', message: 'Synchronisation terminée' };
   },
 

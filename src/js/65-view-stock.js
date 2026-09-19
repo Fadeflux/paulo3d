@@ -42,7 +42,7 @@ function piecesTab(V) {
   const value = sum(ready, (g) => g.value);
   return html`
     <div class="mb-3 flex flex-wrap items-center justify-between gap-2">
-      <p class="text-sm text-slate-400"><span class="font-semibold text-slate-100">${fmtNum(sum(ready, (g) => g.qty))}</span> ${sum(ready, (g) => g.qty) >= 2 ? 'pièces prêtes' : 'pièce prête'} · valeur ${fmtEur(value)}</p>
+      <p class="text-sm text-slate-400"><span class="font-semibold text-slate-100">${fmtNum(sum(ready, (g) => g.qty))}</span> ${pl(sum(ready, (g) => g.qty), 'pièce prête', 'pièces prêtes')} · valeur ${fmtEur(value)}</p>
       ${btn('Stock déjà fabriqué', { size: 'sm', variant: 'ghost', icon: 'PackagePlus', action: 'st-add-stock' })}
     </div>
     ${ready.length ? html`<div class="card divide-y divide-white/[0.05] overflow-hidden">${ready.map((g) => stockRow(V, g))}</div>`
@@ -292,7 +292,7 @@ function openProductionModal({ kind = 'production', templateId = null, quantity 
               <div class="flex items-center gap-2">
                 ${btn('', { size: 'icon', icon: 'Minus', action: 'qty-minus', title: 'Moins' })}
                 ${inputNum('quantity', d.quantity, { placeholder: '1', inputmode: 'numeric', cls: 'w-24 [&_input]:text-center [&_input]:font-display [&_input]:text-lg' })}
-                ${btn('', { size: 'icon', icon: 'Plus', action: 'qty-plus', title: 'Plus' })}
+                ${btn('', { size: 'icon', icon: 'Plus', action: 'qty-plus', title: ui('Plus') })}
                 ${toNum(t.pieces_per_print) > 1 && !isFail ? html`<span class="text-[12px] text-slate-500">${plural(Math.ceil(toNum(d.quantity) / toNum(t.pieces_per_print)), 'plateau', 'plateaux')}</span>` : ''}
               </div>
             </div>

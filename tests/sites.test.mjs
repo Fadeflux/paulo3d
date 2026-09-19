@@ -36,8 +36,9 @@ function stringsOf(src) {
 }
 
 test('identité : Paulo3D garde ses noms d’origine, Anais3D a les siens, rien en commun', () => {
-  assert.deepEqual(plain({ ...pt.SITE, letter: undefined }), { id: 'paulo3d', name: 'Paulo3D', prefix: 'p3d', lang: 'pt-PT', locale: 'pt-PT' });
-  assert.deepEqual(plain({ ...fr.SITE, letter: undefined }), { id: 'anais3d', name: 'Anais3D', prefix: 'a3d', lang: 'fr', locale: 'fr-FR' });
+  const id = (x) => plain({ ...x.SITE, letter: undefined, supaUrl: undefined, supaKey: undefined });
+  assert.deepEqual(id(pt), { id: 'paulo3d', name: 'Paulo3D', prefix: 'p3d', lang: 'pt-PT', locale: 'pt-PT' });
+  assert.deepEqual(id(fr), { id: 'anais3d', name: 'Anais3D', prefix: 'a3d', lang: 'fr', locale: 'fr-FR' });
   // appareils déjà installés : Paulo3D retrouve sa configuration, sa session et ses actions en attente
   assert.equal(pt.LS.supa, 'p3d_supabase');
   assert.equal(pt.lsKey('last_email'), 'p3d_last_email');
@@ -86,8 +87,8 @@ test('portugais : accords, nombres et dates du Portugal', () => {
   assert.match(pt.fmtDate('2026-09-12T10:00:00', 'day'), /^12 set\. 2026$/);
   assert.equal(pt.fmtDate('2026-09-18T14:05:00', 'long'), '18 de setembro de 2026 às 14:05', 'date longue à la portugaise');
   assert.equal(fr.fmtDate('2026-09-18T14:05:00', 'long'), '18 septembre 2026 à 14:05');
-  assert.equal(pt.dbMessage('Stock insuffisant pour « Vase » : il manque 2 pièces.'), 'Stock insuficiente para «Vase»: faltam 2 peças.', 'message de la base traduit');
-  assert.equal(pt.dbMessage('Stock insuffisant pour « Vase » : il manque 1 pièce.'), 'Stock insuficiente para «Vase»: faltam 1 peça.');
+  assert.equal(pt.dbMessage('Stock insuffisant pour « Vase » : il manque 2 pièces.'), 'Stock insuficiente para «Vase»: em falta 2 peças.', 'message de la base traduit');
+  assert.equal(pt.dbMessage('Stock insuffisant pour « Vase » : il manque 1 pièce.'), 'Stock insuficiente para «Vase»: em falta 1 peça.');
   assert.equal(pt.dbMessage('Code de double authentification requis.'), 'Código de autenticação de dois fatores obrigatório.');
   assert.equal(fr.dbMessage('Session expirée : reconnecte-toi.'), 'Session expirée : reconnecte-toi.', 'français : inchangé');
 });
@@ -122,4 +123,29 @@ test('portugais : l’appli fonctionne (opérations, refus traduits)', () => {
   const err = pt.OPS['spool.weigh'].validate(V, { spool_id: '10000000-0000-4000-8000-000000000001', measured_g: 5000 });
   assert.match(err.message, /^5,00 kg é mais do que o peso inicial da bobina/, `refus en portugais : ${err.message}`);
   assert.equal(pt.OPS['order.save'].validate(V, { item_name: '', quantity: 1, status: 'todo' }).message, 'Indica a peça encomendada (120 caracteres no máximo).');
+});
+
+test('base inscrite dans chaque site : aucun lien ne peut la changer, la page ne parle qu’à elle', () => {
+  const PAULO = 'https://tjweersjswfuiutuqnvv.supabase.co';
+  const ANAIS = 'https://jvfvbsiicctnuvdpjska.supabase.co';
+  assert.equal(pt.SITE.supaUrl, PAULO);
+  assert.equal(fr.SITE.supaUrl, ANAIS);
+  assert.match(pt.SITE.supaKey, /^sb_publishable_/, 'clé publique seulement');
+  assert.match(fr.SITE.supaKey, /^sb_publishable_/);
+  for (const [id, url] of [['paulo3d', PAULO], ['anais3d', ANAIS]]) {
+    const csp = built(id, 'index.html').match(/content="(default-src[^"]+)"/)[1];
+    const connect = csp.split(';').map((x) => x.trim()).find((x) => x.startsWith('connect-src ')).split(/\s+/).slice(1);
+    assert.ok(connect.includes(url) && connect.includes(url.replace('https:', 'wss:')), `${id} : sa base autorisée`);
+    assert.ok(!connect.filter((s) => !/127.0.0.1|localhost/.test(s)).some((s) => s.includes('*')), `${id} : aucune autre base Supabase joignable`);
+  }
+  // code : la configuration par lien est ignorée, la démo n'est jamais proposée
+  const boot = code('paulo3d');
+  assert.match(boot, /if \(SITE\.supaUrl\) return null;/, 'lien #setup= ignoré');
+  assert.match(boot, /if \(SITE\.supaUrl\) \{[\s\S]{0,400}lsSet\(LS\.mode, 'supabase'\)/, 'appareil resté en démo : ramené sur la connexion');
+});
+
+test('adresse Supabase : un chemin (relais d’un intermédiaire) est refusé', () => {
+  assert.equal(fr.normalizeSupaUrl('https://abcdefghijklmnopqrst.supabase.co'), 'https://abcdefghijklmnopqrst.supabase.co');
+  assert.equal(fr.normalizeSupaUrl('https://abcdefghijklmnopqrst.supabase.co/rest/v1/'), 'https://abcdefghijklmnopqrst.supabase.co');
+  assert.equal(fr.normalizeSupaUrl('https://abcdefghijklmnopqrst.supabase.co/functions/v1/relais'), '');
 });

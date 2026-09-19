@@ -44,11 +44,11 @@ VIEWS.parametres = {
                 <div class="flex justify-between gap-3"><span class="text-slate-400">Clé publique</span><span class="font-mono text-[13px] text-slate-200">${cfg ? maskKey(cfg.key) : '—'}</span></div>
                 <div class="flex justify-between gap-3"><span class="text-slate-400">État</span><span class="text-slate-200">${Sync.summary().label}</span></div>
                 <div class="flex justify-between gap-3"><span class="text-slate-400">Temps réel</span><span class="text-slate-200">${Sync.state.realtime === 'on' ? ui('actif') : 'coupé'}</span></div>
-                <div class="flex justify-between gap-3"><span class="text-slate-400">Schéma</span><span class="text-slate-200">${Sync.state.schemaVersion === null ? 'non vérifié' : `version ${Sync.state.schemaVersion}`}</span></div>
+                <div class="flex justify-between gap-3"><span class="text-slate-400">Schéma</span><span class="text-slate-200">${Sync.state.schemaVersion === null ? 'non vérifié' : ui(`version ${Sync.state.schemaVersion}`)}</span></div>
               </div>`,
             isDemo
               ? html`${btn('Remplir avec des exemples', { size: 'sm', variant: 'ghost', icon: 'Sparkles', action: 'demo-seed' })}${btn('Vider la démo', { size: 'sm', variant: 'ghost', icon: 'Trash2', action: 'demo-reset' })}${btn('Connecter Supabase', { size: 'sm', variant: 'primary', icon: 'PlugZap', action: 'connect-supabase' })}`
-              : html`${btn('Autre appareil (QR code)', { size: 'sm', variant: 'ghost', icon: 'QrCode', action: 'pair-device' })}${btn('Modifier la connexion', { size: 'sm', icon: 'Pencil', action: 'connect-supabase' })}`)}
+              : SITE.supaUrl ? '' : html`${btn('Autre appareil (QR code)', { size: 'sm', variant: 'ghost', icon: 'QrCode', action: 'pair-device' })}${btn('Modifier la connexion', { size: 'sm', icon: 'Pencil', action: 'connect-supabase' })}`)}
 
           ${isDemo ? '' : settingsSection('s-compte', 'UserRound', 'Compte', backend && backend.email ? backend.email : '', html`<p class="text-[13px] text-slate-400">Tu peux rester connecté sur plusieurs appareils avec le même compte : tout est synchronisé.</p>
             ${pendingOps ? html`<p class="rounded-xl bg-amber-400/10 p-3 text-[12px] text-amber-200">${pendingOps >= 2 ? `${pendingOps} actions pas encore envoyées : reste connecté jusqu'à ce qu'elles partent.` : "1 action pas encore envoyée : reste connecté jusqu'à ce qu'elle parte."}</p>` : ''}`,

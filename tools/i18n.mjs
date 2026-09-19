@@ -27,13 +27,14 @@ const FR_WORDS = new Set(['le', 'la', 'les', 'un', 'une', 'des', 'de', 'du', 'en
 // Texte lisible par un humain ? (pas une liste de classes, une clé, une couleur, un nom d'icône…)
 export function isText(s) {
   const t = s.split(HOLE).join(' ').trim();
-  if (!/[A-Za-zÀ-ÿ]{2,}/.test(t)) return false;
-  if (!/[À-ÿ]/.test(t) && /^[a-z0-9_:\-./#[\]%()!&>=,+*@]+(\s+[a-z0-9_:\-./#[\]%()!&>=,+*@]+)*$/.test(t)
-    && !(/\s/.test(t) && t.split(/\s+/).some((w) => FR_WORDS.has(w.replace(/[().,!?:]/g, ''))))) return false;
+  const withHole = s.includes(HOLE); // « pour {} » : un mot-outil à côté d'une valeur est une phrase
+  if (!/[A-Za-zÀ-ÿœŒ]{2,}/.test(t)) return false;
+  if (!/[À-ÿœŒ]/.test(t) && /^[a-z0-9_:\-./#[\]%()!&>=,+*@]+(\s+[a-z0-9_:\-./#[\]%()!&>=,+*@]+)*$/.test(t)
+    && !((/\s/.test(t) || withHole) && t.split(/\s+/).some((w) => FR_WORDS.has(w.replace(/[().,!?:]/g, ''))))) return false;
   if (ICON_NAMES.has(t)) return false; // nom d'icône (Download, Printer…)
   if (/^#[0-9a-f]{3,8}$/i.test(t)) return false;
   // un seul « mot » sans accent : texte seulement si c'est un vrai mot (pas camelCase, chemin, type MIME…)
-  if (!/\s/.test(t) && !/[À-ÿ]/.test(t) && !/^[A-Za-z][a-z'’]+[.!?…:]?$/.test(t)) return false;
+  if (!/\s/.test(t) && !/[À-ÿœŒ]/.test(t) && !/^[A-Za-z][a-z'’]+(-[A-Za-z][a-z'’]+)*[.!?…:]?$/.test(t)) return false;
   // morceaux d'attributs HTML, sélecteurs CSS, routes
   if (/^[a-z][a-z-]*="/.test(t) || /^[[.#][a-z-]/i.test(t) || /^#\//.test(t)) return false;
   if (/^(Inter|ui-sans-serif|system-ui)\b/.test(t)) return false;
@@ -95,7 +96,9 @@ function textNodes(ast) {
   const walk = (n) => {
     if (!n || typeof n.type !== 'string') return;
     if (n.type === 'CallExpression' && n.callee.type === 'Identifier' && TEXT_CALLS.has(n.callee.name)) {
-      for (const a of n.arguments) if (a.type === 'Literal' && typeof a.value === 'string') out.set(a, '');
+      for (const a of n.arguments) {
+        if ((a.type === 'Literal' && typeof a.value === 'string') || a.type === 'TemplateLiteral') out.set(a, '');
+      }
     }
     if (n.type === 'VariableDeclarator' && n.id.type === 'Identifier' && TEXT_LISTS.has(n.id.name) && n.init && n.init.type === 'ArrayExpression') {
       for (const e of n.init.elements) if (e && e.type === 'Literal' && typeof e.value === 'string') out.set(e, n.id.name);
@@ -136,7 +139,7 @@ function collect(code) {
       const joined = joinedOf(node);
       if (inHtml || /<[a-z/!]/i.test(joined)) {
         for (const p of htmlPieces(joined)) found.push({ node, kind: 'tpl-html', piece: p, text: joined.slice(p.start, p.end), ctx: '' });
-      } else if (isText(joined)) found.push({ node, kind: 'tpl', text: joined, ctx: '' });
+      } else if (forced.has(node) || isText(joined)) found.push({ node, kind: 'tpl', text: joined, ctx: '' });
       node.expressions.forEach((e) => visit(e, false));
       return;
     }

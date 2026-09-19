@@ -10,7 +10,11 @@ const SCHEMA_VERSION = 3;
 // prefix / id : noms de TOUT ce que le site garde dans le navigateur. Deux sites publiés à la même
 // adresse (fadeflux.github.io) partagent le même stockage : sans noms distincts, l'un lirait les
 // réglages de l'autre ou effacerait sa copie hors-ligne.
-const SITE = { id: '__SITE_ID__', name: '__SITE_NAME__', prefix: '__SITE_PREFIX__', lang: '__SITE_LANG__', locale: '__SITE_LOCALE__', letter: '__SITE_LETTER__' };
+// supaUrl / supaKey : la base du site, inscrite à la construction (vide pour la version de test)
+const SITE = {
+  id: '__SITE_ID__', name: '__SITE_NAME__', prefix: '__SITE_PREFIX__', lang: '__SITE_LANG__', locale: '__SITE_LOCALE__', letter: '__SITE_LETTER__',
+  supaUrl: '__SITE_SUPA_URL__', supaKey: '__SITE_SUPA_KEY__',
+};
 const lsKey = (k) => `${SITE.prefix}_${k}`;
 // Mot isolé AFFICHÉ (« actif », « jamais »…) : marqué pour être traduit sur un site dans une autre
 // langue (tools/i18n.mjs) ; les mots isolés non marqués sont des clés du code et ne bougent jamais

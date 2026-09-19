@@ -141,7 +141,7 @@ function openTemplateModal({ template = null, duplicate = false }) {
   if (!editing) {
     t.id = uuid();
     t.archived = false;
-    if (duplicate) t.name = `${template.name} (copie)`.slice(0, 120);
+    if (duplicate) t.name = ui(`${template.name} (copie)`).slice(0, 120);
   }
   if (!Array.isArray(t.materials)) t.materials = [];
   if (!t.materials.length) t.materials.push(newMaterialLine(V0, []));
@@ -186,7 +186,7 @@ function openTemplateModal({ template = null, duplicate = false }) {
   const suggestion = () => {
     const { st, pr, sug } = numbers();
     return html`<div class="mt-3 flex items-end justify-between gap-3">
-      <div><div class="font-display text-2xl font-bold tabular-nums text-cyan-300">${fmtEur(sug.rounded)}</div><div class="text-[12px] text-slate-500">${pr.mode === 'margin' ? `marge ${fmtNum(pr.marginPct, 1)} %` : `coût × ${fmtNum(pr.coef, 2)}`} = ${fmtEur(sug.raw)}${st.price_rounding !== 'none' ? ', arrondi' : ''}</div></div>
+      <div><div class="font-display text-2xl font-bold tabular-nums text-cyan-300">${fmtEur(sug.rounded)}</div><div class="text-[12px] text-slate-500">${pr.mode === 'margin' ? ui(`marge ${fmtNum(pr.marginPct, 1)} %`) : `coût × ${fmtNum(pr.coef, 2)}`} = ${fmtEur(sug.raw)}${st.price_rounding !== 'none' ? ', arrondi' : ''}</div></div>
       ${btn('Utiliser', { size: 'sm', action: 'use-suggested', icon: 'ArrowDown' })}
     </div>`;
   };

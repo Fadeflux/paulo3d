@@ -139,7 +139,11 @@ function normalizeSupaUrl(input) {
     const u = new URL(s);
     const local = /^(localhost|127\.0\.0\.1|\[::1\])$/.test(u.hostname);
     if (u.protocol !== 'https:' && !local) return '';
-    return `${u.origin}${u.pathname.replace(/\/(rest|auth)\/v1.*$/, '').replace(/\/+$/, '')}`;
+    const rest = u.pathname.replace(/\/(rest|auth)\/v1.*$/, '').replace(/\/+$/, '');
+    // une base Supabase se trouve à la RACINE de son adresse : un chemin (…/functions/v1/x) pourrait
+    // relayer la connexion par un intermédiaire — refusé
+    if (rest) return '';
+    return u.origin;
   } catch {
     return '';
   }

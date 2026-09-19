@@ -36,6 +36,15 @@ const Boot = {
   },
 
   async route() {
+    // base inscrite dans le site : ni configuration, ni mode démo (un appareil resté en démo en sort
+    // tout seul et arrive sur la connexion)
+    if (SITE.supaUrl) {
+      const baked = { url: SITE.supaUrl, key: SITE.supaKey };
+      const cur = lsGet(LS.supa, null);
+      if (!cur || cur.url !== baked.url || cur.key !== baked.key) lsSet(LS.supa, baked);
+      if (lsGet(LS.mode, null) !== 'supabase') lsSet(LS.mode, 'supabase');
+      return this.startSupabase(baked);
+    }
     const mode = lsGet(LS.mode, null);
     if (mode === 'demo') return this.startDemo();
     const cfg = lsGet(LS.supa, null);
@@ -210,6 +219,8 @@ const Boot = {
     const m = location.hash.match(/[#&/]setup=([A-Za-z0-9_-]+)/);
     if (!m) return null;
     history.replaceState(null, '', `${location.pathname}${location.search}#/`);
+    // base inscrite dans le site : un lien de configuration est ignoré (il ne peut rien changer)
+    if (SITE.supaUrl) return null;
     try {
       const obj = JSON.parse(b64urlDecode(m[1]));
       const url = normalizeSupaUrl(obj.u);

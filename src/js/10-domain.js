@@ -755,7 +755,7 @@ function historyEvents(V, { range = null, type = 'all', q = '' } = {}) {
   for (const m of valuesOf(V.spool_movements)) {
     if (m.kind !== 'weigh') continue;
     const s = V.spools.get(m.spool_id);
-    ev.push({ key: `spool_movements:${m.id}`, table: 'spool_movements', id: m.id, type: 'weigh', date: m.occurred_at, title: `Pesée · ${spoolLabel(s)}`, sub: `${fmtG(m.measured_g)} restants`, amount: null });
+    ev.push({ key: `spool_movements:${m.id}`, table: 'spool_movements', id: m.id, type: 'weigh', date: m.occurred_at, title: `Pesée · ${spoolLabel(s)}`, sub: ui(`${fmtG(m.measured_g)} restants`), amount: null });
   }
   for (const l of valuesOf(V.production_stock)) {
     if (l.production_id) continue;
@@ -799,7 +799,7 @@ function exportCsvProductions(V) {
   const rows = valuesOf(V.productions).sort((a, b) => time(a.occurred_at) - time(b.occurred_at)).map((p) => [
     csvDate(p.occurred_at), p.kind === 'failure' ? 'Print raté' : 'Production', p.item_name, p.quantity, p.kind === 'failure' ? toNum(p.failed_pct) : '',
     toNum(p.grams_total), toNum(p.print_time_min_total), eur(p.material_cost), eur(p.purge_cost), eur(p.hardware_cost), eur(p.machine_cost), eur(p.labor_cost), eur(p.total_cost), eur(p.unit_cost), p.failure_reason || '', p.note || '']);
-  return toCsv(['Date', 'Type', 'Article', 'Quantité', 'Échec (%)', 'Filament (g)', 'Temps machine (min)', 'Matière (€)', 'Purge (€)', 'Quincaillerie (€)', 'Machine (€)', "Main-d'œuvre (€)", 'Total (€)', 'Coût unitaire (€)', 'Raison', 'Note'], rows);
+  return toCsv(['Date', ui('Type'), 'Article', 'Quantité', 'Échec (%)', 'Filament (g)', 'Temps machine (min)', 'Matière (€)', 'Purge (€)', 'Quincaillerie (€)', 'Machine (€)', "Main-d'œuvre (€)", 'Total (€)', 'Coût unitaire (€)', 'Raison', 'Note'], rows);
 }
 function exportCsvSpools(V) {
   const st = settingsOf(V);

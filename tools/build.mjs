@@ -54,8 +54,12 @@ const sources = files.map((f) => {
 });
 if (missingTexts.size) fail(`${missingTexts.size} texte(s) sans traduction ${SITE.lang} (node tools/i18n.mjs ${SITE.lang}) :\n  ${[...missingTexts].slice(0, 30).join('\n  ')}`);
 // identité du site (voir SITE dans 00-core.js)
-const siteMarkers = { __SITE_ID__: SITE.id, __SITE_NAME__: SITE.name, __SITE_PREFIX__: SITE.prefix, __SITE_LANG__: SITE.lang, __SITE_LOCALE__: SITE.locale, __SITE_LETTER__: SITE.letter };
-const withSite = (code) => code.replace(/'(__SITE_[A-Z]+__)'/g, (m, k) => (k in siteMarkers ? JSON.stringify(siteMarkers[k]) : m));
+const siteMarkers = {
+  __SITE_ID__: SITE.id, __SITE_NAME__: SITE.name, __SITE_PREFIX__: SITE.prefix, __SITE_LANG__: SITE.lang, __SITE_LOCALE__: SITE.locale, __SITE_LETTER__: SITE.letter,
+  __SITE_SUPA_URL__: SITE.supabase ? SITE.supabase.url : '', __SITE_SUPA_KEY__: SITE.supabase ? SITE.supabase.key : '',
+};
+if (SITE.supabase && !/^https:\/\/[a-z0-9]{20}\.supabase\.co$/.test(SITE.supabase.url)) fail(`adresse Supabase du site invalide : ${SITE.supabase.url}`);
+const withSite = (code) => code.replace(/'(__SITE_[A-Z_]+?__)'/g, (m, k) => (k in siteMarkers ? JSON.stringify(siteMarkers[k]) : m));
 let js = withSite(lf(sources.map(([f, code]) => `/* ==== ${f} ==== */\n${code}`).join('\n')));
 const htmlTpl = lf(read('src/index.html'));
 
@@ -141,7 +145,11 @@ const splashLogo = ctx.__logo;
 //    - les 4 bibliothèques jsdelivr, à leur adresse EXACTE (et vérifiées par leur intégrité).
 //    Un code glissé dans la page (attribut onclick, <img onerror>, autre script jsdelivr…) est bloqué.
 //    'unsafe-inline' ne sert qu'aux très vieux navigateurs : il est ignoré dès qu'une empreinte est présente.
-const connect = ["'self'", 'https://*.supabase.co', 'wss://*.supabase.co', 'https://*.supabase.in', 'wss://*.supabase.in', 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
+// site avec sa base inscrite : la page ne peut parler QU'À ce projet Supabase (défense en profondeur)
+const supaHosts = SITE.supabase
+  ? [SITE.supabase.url, SITE.supabase.url.replace(/^https:/, 'wss:')]
+  : ['https://*.supabase.co', 'wss://*.supabase.co', 'https://*.supabase.in', 'wss://*.supabase.in'];
+const connect = ["'self'", ...supaHosts, 'https://cdn.jsdelivr.net', 'https://fonts.googleapis.com', 'https://fonts.gstatic.com'];
 if (DEV) connect.push('http://127.0.0.1:*', 'ws://127.0.0.1:*', 'http://localhost:*', 'ws://localhost:*');
 const cspFor = (inlineHashes) => [
   "default-src 'self'",

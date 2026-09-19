@@ -15,7 +15,14 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const TARGET = 'https://paulo3d.up.railway.app/';
 const OUT = path.join(ROOT, 'docs');
 
-const script = `location.replace(${JSON.stringify(TARGET)} + location.hash);`;
+// Avant de partir : efface la session Supabase et les réglages que Paulo3D avait laissés sur cette adresse
+// PARTAGÉE avec les autres sites fadeflux.github.io (un autre site de la même adresse pourrait les lire).
+// La copie locale (IndexedDB paulo3d:*) est GARDÉE : elle peut contenir des actions faites hors connexion
+// et jamais envoyées — les effacer les perdrait pour de bon.
+const script = [
+  'try{Object.keys(localStorage).forEach(function(k){if(/^p3d[_-]/.test(k))localStorage.removeItem(k)})}catch(e){}',
+  'location.replace(' + JSON.stringify(TARGET) + '+location.hash);',
+].join('');
 const hash = crypto.createHash('sha256').update(script, 'utf8').digest('base64');
 const html = `<!doctype html>
 <html lang="pt-PT">
