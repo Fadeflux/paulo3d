@@ -147,7 +147,7 @@ const Screens = {
         <h1 class="font-display text-2xl font-bold text-slate-50">${fromSettings ? 'Connexion Supabase' : 'Bienvenue'}</h1>
         <p class="mt-1 text-sm text-slate-400">Relie l'application à ta base Supabase : tes données seront enregistrées en ligne et synchronisées entre PC et téléphone.</p>
         <form class="mt-5 space-y-4" id="setup-form" novalidate>
-          ${field('URL du projet', inputText('url', cfg.url || '', { placeholder: 'https://xxxxxxxx.supabase.co', type: 'url', maxlength: 300, attrs: { autocapitalize: 'off', spellcheck: 'false', inputmode: 'url' } }))}
+          ${field('URL du projet', inputText('url', cfg.url || '', { placeholder: 'https://xxxxxxxx.supabase.co', type: 'url', maxlength: 1000, attrs: { autocapitalize: 'off', spellcheck: 'false', inputmode: 'url' } }), { hint: 'Tu as reçu un lien de configuration ? Colle-le ici en entier : la clé est remplie toute seule.' })}
           ${field('Clé publique (publishable ou anon)', html`<textarea class="input h-24 py-2 font-mono text-[12px]" name="key" placeholder="sb_publishable_… ou eyJhbGciOi…" autocapitalize="off" spellcheck="false">${cfg.key || ''}</textarea>`)}
           <div id="setup-msg"></div>
           <button type="submit" class="btn btn-primary h-12 w-full rounded-xl text-[15px]">${icon('PlugZap', 'w-5 h-5')}<span>Tester et continuer</span></button>
@@ -178,6 +178,18 @@ const Screens = {
     };
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      // lien de configuration collé tel quel (…#setup=…) : sur iPhone, un lien reçu par message s'ouvre dans
+      // Safari et pas dans l'appli installée — on le copie puis on le colle ici, adresse et clé sont reprises
+      const pasted = `${form.url.value} ${form.key.value}`.match(/[#&/]setup=([A-Za-z0-9_-]+)/);
+      if (pasted) {
+        try {
+          const obj = JSON.parse(b64urlDecode(pasted[1]));
+          form.url.value = String(obj.u || '');
+          form.key.value = String(obj.k || '');
+        } catch {
+          return show('Ce lien de configuration est incomplet : copie-le en entier.');
+        }
+      }
       const url = normalizeSupaUrl(form.url.value);
       const key = form.key.value.trim().replace(/\s+/g, '');
       if (!url) return show("URL invalide : elle ressemble à https://xxxxxxxx.supabase.co (https obligatoire).");

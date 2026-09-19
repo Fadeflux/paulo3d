@@ -1212,5 +1212,7 @@
  "secret": "secret",
  "service_role": "service_role",
  "Aujourd'hui": "Hoje",
- "%j %mois %an à %h": "%j de %mois de %an às %h"
+ "%j %mois %an à %h": "%j de %mois de %an às %h",
+ "Tu as reçu un lien de configuration ? Colle-le ici en entier : la clé est remplie toute seule.": "Recebeste uma ligação de configuração? Cola-a aqui por inteiro: a chave é preenchida sozinha.",
+ "Ce lien de configuration est incomplet : copie-le en entier.": "Esta ligação de configuração está incompleta: copia-a por inteiro."
 }

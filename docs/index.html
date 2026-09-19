@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Paulo3D — Oficina de impressão 3D</title>
 <meta name="description" content="Bobinas, custo de produção, produção, stock e vendas da oficina de impressão 3D.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-HkfPG1Y84ld1mcmfPgqdfA+2F3OtH3uOhD9j8JuRP4c=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-mqgik78d67z00h832EOQZE6xP4Id8f1UJjl2URYS6bI=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://*.supabase.co wss://*.supabase.co https://*.supabase.in wss://*.supabase.in https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#05070A">
@@ -80,7 +80,7 @@
    Socle : constantes, formats, HTML sûr, icônes, logo
    ============================================================================= */
 
-const APP_VERSION = "1.0.0-81377a98";
+const APP_VERSION = "1.0.0-ef763414";
 const SCHEMA_VERSION = 3;
 
 // Identité du site, remplie à la construction (tools/sites.mjs) : le même code sert plusieurs sites.
@@ -7936,7 +7936,7 @@ const Screens = {
         <h1 class="font-display text-2xl font-bold text-slate-50">${fromSettings ? "Ligação ao Supabase" : "Bem-vindo"}</h1>
         <p class="mt-1 text-sm text-slate-400">Liga a aplicação à tua base de dados Supabase: os teus dados ficam guardados online e sincronizados entre o computador e o telemóvel.</p>
         <form class="mt-5 space-y-4" id="setup-form" novalidate>
-          ${field("URL do projeto", inputText('url', cfg.url || '', { placeholder: 'https://xxxxxxxx.supabase.co', type: 'url', maxlength: 300, attrs: { autocapitalize: 'off', spellcheck: 'false', inputmode: 'url' } }))}
+          ${field("URL do projeto", inputText('url', cfg.url || '', { placeholder: 'https://xxxxxxxx.supabase.co', type: 'url', maxlength: 1000, attrs: { autocapitalize: 'off', spellcheck: 'false', inputmode: 'url' } }), { hint: "Recebeste uma ligação de configuração? Cola-a aqui por inteiro: a chave é preenchida sozinha." })}
           ${field("Chave pública (publishable ou anon)", html`<textarea class="input h-24 py-2 font-mono text-[12px]" name="key" placeholder="sb_publishable_… ou eyJhbGciOi…" autocapitalize="off" spellcheck="false">${cfg.key || ''}</textarea>`)}
           <div id="setup-msg"></div>
           <button type="submit" class="btn btn-primary h-12 w-full rounded-xl text-[15px]">${icon('PlugZap', 'w-5 h-5')}<span>Testar e continuar</span></button>
@@ -7967,6 +7967,18 @@ const Screens = {
     };
     form.addEventListener('submit', async (e) => {
       e.preventDefault();
+      // lien de configuration collé tel quel (…#setup=…) : sur iPhone, un lien reçu par message s'ouvre dans
+      // Safari et pas dans l'appli installée — on le copie puis on le colle ici, adresse et clé sont reprises
+      const pasted = `${form.url.value} ${form.key.value}`.match(/[#&/]setup=([A-Za-z0-9_-]+)/);
+      if (pasted) {
+        try {
+          const obj = JSON.parse(b64urlDecode(pasted[1]));
+          form.url.value = String(obj.u || '');
+          form.key.value = String(obj.k || '');
+        } catch {
+          return show("Esta ligação de configuração está incompleta: copia-a por inteiro.");
+        }
+      }
       const url = normalizeSupaUrl(form.url.value);
       const key = form.key.value.trim().replace(/\s+/g, '');
       if (!url) return show("URL inválido: deve parecer-se com https://xxxxxxxx.supabase.co (https obrigatório).");
