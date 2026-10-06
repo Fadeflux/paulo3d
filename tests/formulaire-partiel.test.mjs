@@ -19,7 +19,7 @@ const TEMPLATE = { id: TPL, owner_id: U, name: 'Vase', description: null, photo:
 // Ce que l'utilisateur voit dans la fiche bobine (champs lus par readForm)
 const champs = (s, modif = {}) => ({ brand: s.brand, material: s.material, color_name: s.color_name, color_hex: s.color_hex, price: s.price, initial_weight_g: s.initial_weight_g, tare_g: s.tare_g, purchased_at: s.purchased_at || '', notes: s.notes || '', ...modif });
 
-function atelier({ reseau = true } = {}) {
+function atelier({ reseau = true, refusVisible = false, echo = false } = {}) {
   const { app, G, get, Store, Sync } = boot();
   resetStore(Store, app);
   Store.upsertRows('settings', [{ owner_id: U, ...app.DEFAULT_SETTINGS, updated_at: T }]);
@@ -30,11 +30,19 @@ function atelier({ reseau = true } = {}) {
   Sync.backend = fakeBackend((n, op) => {
     envoyes.push({ type: op.type, payload: JSON.parse(JSON.stringify(op.payload)) });
     if (!reseau) throw httpErr(0, '', 'Failed to fetch'); // pas de réseau : l'action reste dans la file
+    // echo : la base renvoie la ligne enregistrée, comme en vrai. Sans ça, une bobine tout juste
+    // ajoutée n'existe plus localement une fois l'action confirmée, et la pesée qui suit est refusée.
+    if (echo && op.type === 'spool.save') return { spools: [{ ...BOBINE, ...op.payload, remaining_weight_g: op.payload.initial_weight_g, updated_at: T }] };
     return {};
   });
   let fenetre = null;
   get('Modal').open = (cfg) => { fenetre = cfg; return {}; };
-  G.setFieldError = (root, name, message) => { throw new Error(`champ refusé : ${name} (${message})`); };
+  let refus = null;
+  G.setFieldError = (root, name, message) => {
+    if (!message) return;                       // effacement d'un message : normal
+    if (refusVisible) { refus = { name, message }; return; }
+    throw new Error(`champ refusé : ${name} (${message})`);
+  };
   let formulaire = {};
   G.readForm = () => ({ ...formulaire });
   const m = { el: {}, close() {}, render() {} };
@@ -52,7 +60,17 @@ function atelier({ reseau = true } = {}) {
     Store.upsertRows('templates', [{ ...TEMPLATE, archived: true, updated_at: '2026-09-18T10:05:00.000001+00:00' }]);
     Store.rebuild(true);
   };
-  return { app, Store, Sync, envoyes, ouvrirBobine, ouvrirTemplate, enregistrer, telephone };
+  // soumettre sans rien supposer du nombre d'actions (une saisie peut en produire deux :
+  // la fiche enregistrée, puis la pesée du poids actuel)
+  const soumettre = async (valeurs) => { formulaire = valeurs || {}; await fenetre.actions.submit({}, {}, m); };
+  const champRefuse = async (valeurs) => {
+    refus = null;
+    await soumettre(valeurs);
+    assert.ok(refus, 'banc : un champ devait être refusé');
+    return refus;
+  };
+  const runOp = (type, payload) => get('runOp')(type, payload, {});
+  return { app, get, Store, Sync, envoyes, ouvrirBobine, ouvrirTemplate, enregistrer, soumettre, champRefuse, runOp, telephone };
 }
 
 test('bobine modifiée sur le PC sans toucher la tare : ni la tare ni l’archivage ne sont renvoyés', async () => {
@@ -145,4 +163,54 @@ test('nouveau template et copie : créés actifs', async () => {
   const { payload } = await w.enregistrer();
   assert.equal(payload.archived, false);
   assert.notEqual(payload.id, TPL);
+});
+
+// ---------------------------------------------------------------------------
+// Poids actuel du rouleau (demande d'André, 06/10) : on peut le saisir dans la fiche bobine, à
+// l'ajout ET en modification. Il est enregistré comme une pesée : les productions suivantes le font
+// baisser toutes seules. Avant, le champ n'existait qu'à l'ajout, derrière une bascule.
+const actions = async (w, fenetreValeurs) => { const n = w.envoyes.length; await w.soumettre(fenetreValeurs); return w.envoyes.slice(n); };
+
+test('fiche bobine : le poids actuel saisi part comme une pesée', async () => {
+  const w = atelier();
+  const s = w.Store.V.spools.get(X);
+  assert.equal(Number(s.remaining_weight_g), 1000);
+  w.ouvrirBobine({ spool: s });
+  const env = await actions(w, champs(s, { remainingNow: 640 }));           // rouleau pesé : 640 g
+  assert.deepEqual(env.map((e) => e.type), ['spool.save', 'spool.weigh']);
+  assert.equal(env[1].payload.measured_g, 640);
+  assert.equal(env[1].payload.spool_id, X);
+});
+
+test('fiche bobine : poids actuel inchangé ou vide -> aucune pesée inutile', async () => {
+  const w = atelier();
+  const s = w.Store.V.spools.get(X);
+  w.ouvrirBobine({ spool: s });
+  assert.deepEqual((await actions(w, champs(s, { remainingNow: 1000, notes: 'rangée en haut' }))).map((e) => e.type), ['spool.save']);
+  const w2 = atelier();
+  w2.ouvrirBobine({ spool: w2.Store.V.spools.get(X) });
+  assert.deepEqual((await actions(w2, champs(s, { remainingNow: '' }))).map((e) => e.type), ['spool.save']);
+});
+
+test('nouvelle bobine déjà entamée : le poids actuel part avec elle ; neuve, rien de plus', async () => {
+  const neuve = { brand: 'B', material: 'PLA', color_name: 'Rouge', color_hex: '#FF0000', price: 20, initial_weight_g: 1000, tare_g: null, purchased_at: '', notes: '' };
+  const w = atelier({ echo: true });
+  w.ouvrirBobine({});
+  const entamee = await actions(w, { ...neuve, remainingNow: 300 });
+  assert.deepEqual(entamee.map((e) => e.type), ['spool.save', 'spool.weigh']);
+  assert.equal(entamee[1].payload.measured_g, 300);
+  assert.equal(entamee[1].payload.spool_id, entamee[0].payload.id);
+  const w2 = atelier({ echo: true });
+  w2.ouvrirBobine({});
+  assert.deepEqual((await actions(w2, { ...neuve, remainingNow: '' })).map((e) => e.type), ['spool.save'], 'bobine neuve : pas de pesée');
+});
+
+test('fiche bobine : un poids actuel plus lourd que la bobine neuve est refusé', async () => {
+  const w = atelier({ refusVisible: true });
+  const s = w.Store.V.spools.get(X);
+  w.ouvrirBobine({ spool: s });
+  const refus = await w.champRefuse(champs(s, { remainingNow: 1600 }));
+  assert.equal(refus.name, 'remainingNow');
+  assert.match(refus.message, /plus que le poids initial/);
+  assert.equal(w.envoyes.length, 0, 'rien n’est envoyé');
 });

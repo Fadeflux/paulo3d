@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Paulo3D — Oficina de impressão 3D</title>
 <meta name="description" content="Bobinas, custo de produção, produção, stock e vendas da oficina de impressão 3D.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-LSH81dCYJk4aNTK+vWhu/pMBEOiwrobAjcAem/zZdPo=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://tjweersjswfuiutuqnvv.supabase.co wss://tjweersjswfuiutuqnvv.supabase.co https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-yrBGAEin8ChjjECHRE3jHfXRHtOvksAWEAksrYBtZaQ=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://tjweersjswfuiutuqnvv.supabase.co wss://tjweersjswfuiutuqnvv.supabase.co https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#05070A">
@@ -80,7 +80,7 @@
    Socle : constantes, formats, HTML sûr, icônes, logo
    ============================================================================= */
 
-const APP_VERSION = "1.0.0-85a700e7";
+const APP_VERSION = "1.0.0-77be7551";
 const SCHEMA_VERSION = 3;
 
 // Identité du site, remplie à la construction (tools/sites.mjs) : le même code sert plusieurs sites.
@@ -4676,7 +4676,10 @@ function openSpoolModal({ spool = null, duplicate = false }) {
     base.archived = false;
     base.purchased_at = toLocalInput().slice(0, 10);
   }
-  const d = { s: base, started: false, remainingNow: null, busy: false };
+  // Poids actuel du rouleau : en modification, ce qu'il reste aujourd'hui (modifiable) ; à l'ajout,
+  // vide = bobine neuve. Enregistré comme une pesée : les productions le font baisser toutes seules.
+  const restantOuverture = editing ? roundDb(Math.max(0, toNum(spool.remaining_weight_g)), 2) : null;
+  const d = { s: base, remainingNow: restantOuverture, busy: false };
   const V0 = Store.V;
   const knownMaterials = [...new Set([...MATERIALS, ...valuesOf(V0.spools).map((x) => x.material)])];
   const knownBrands = [...new Set([...valuesOf(V0.spools).map((x) => x.brand).filter(Boolean), ...BRANDS])];
@@ -4716,11 +4719,10 @@ function openSpoolModal({ spool = null, duplicate = false }) {
           ${field("Peso inicial (líquido)", inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }))}
         </div>
         <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
-        ${editing ? '' : html`<div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
-          <label class="flex items-center justify-between gap-3"><span class="text-sm text-slate-200">Bobina já começada</span>
-            <input type="checkbox" name="started" class="toggle" ${d.started ? raw('checked') : ''}/></label>
-          ${d.started ? html`<div class="mt-3">${field("Peso restante hoje (líquido, sem a bobina vazia)", inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: String(weighExample(d.s)), inputmode: 'numeric' }))}</div>` : ''}
-        </div>`}
+        <div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
+          ${field("Peso atual do rolo", inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: editing ? String(weighExample(d.s)) : "bobina nova", inputmode: 'numeric' }),
+            { hint: editing ? "O que resta hoje, sem a bobina vazia. Cada produção faz este valor descer sozinho." : "Bobina já começada? Indica o que resta (sem a bobina vazia). Deixa vazio se for nova." })}
+        </div>
         <details class="group rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.s.tare_g || d.s.notes ? raw('open') : ''}>
           <summary class="flex cursor-pointer list-none items-center justify-between text-sm text-slate-300">Mais detalhes<span class="transition group-open:rotate-180">${icon('ChevronDown', 'w-4 h-4')}</span></summary>
           <div class="mt-3 space-y-3">
@@ -4735,11 +4737,6 @@ function openSpoolModal({ spool = null, duplicate = false }) {
     onInput: (e, m) => {
       const el = e.target;
       if (!el.name) return;
-      if (el.name === 'started') {
-        d.started = el.checked;
-        m.render();
-        return;
-      }
       if (el.name === 'remainingNow') {
         d.remainingNow = parseNum(el.value);
         return;
@@ -4770,9 +4767,13 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         if (!Number.isFinite(d.s.price) || d.s.price < 0) { setFieldError(m.el, 'price', "Indica o preço pago (0 se foi oferecida)."); bad = true; }
         if (!Number.isFinite(d.s.initial_weight_g) || d.s.initial_weight_g <= 0) { setFieldError(m.el, 'initial_weight_g', "Peso inválido."); bad = true; }
         if (d.s.tare_g !== null && (!Number.isFinite(d.s.tare_g) || d.s.tare_g < 0)) { setFieldError(m.el, 'tare_g', "Tara inválida."); bad = true; }
-        const remaining = d.started ? parseNum(readForm(m.el).remainingNow) : null;
-        if (d.started && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', "Indica o peso restante."); bad = true; }
-        else if (d.started && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
+        const saisi = String(readForm(m.el).remainingNow ?? '').trim();
+        const remaining = saisi === '' ? null : parseNum(saisi);
+        if (saisi !== '' && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', "Peso inválido."); bad = true; }
+        else if (remaining !== null && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
+        // enregistré seulement s'il apporte une information : bobine entamée à l'ajout, ou poids changé
+        const peser = remaining !== null
+          && (editing ? roundDb(remaining, 2) !== restantOuverture : roundDb(remaining, 2) !== roundDb(toNum(d.s.initial_weight_g), 2));
         if (bad) return;
         d.busy = true;
         const payload = {
@@ -4796,8 +4797,8 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         }
         lsSet(lsKey('last_brand'), payload.brand);
         const res = await runOp('spool.save', payload, { success: editing ? "Bobina editada" : "Bobina adicionada" });
-        if (opAccepted(res) && d.started) {
-          await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: "Peso restante ao adicionar" }, { success: "Peso restante registado" });
+        if (opAccepted(res) && peser) {
+          await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: editing ? "Peso atual registado" : "Peso restante ao adicionar" }, { success: `Peso atual registado: ${fmtG(remaining)}` });
         }
         d.busy = false;
         if (opAccepted(res)) m.close();

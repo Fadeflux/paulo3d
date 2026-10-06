@@ -450,8 +450,6 @@
  "Nom de la couleur (ex. Noir mat)": "Nome da cor (ex. Preto mate)",
  "Prix d'achat": "Preço de compra",
  "Poids initial (net)": "Peso inicial (líquido)",
- "Bobine déjà entamée": "Bobina já começada",
- "Poids restant aujourd’hui (net, sans la bobine vide)": "Peso restante hoje (líquido, sem a bobina vazia)",
  "Poids de la bobine vide (tare)": "Peso da bobina vazia (tara)",
  "Pèse une bobine vide de cette marque une fois : ensuite il suffit de poser la bobine sur la balance.": "Pesa uma bobina vazia desta marca uma vez: depois basta pôr a bobina na balança.",
  "Notes": "Notas",
@@ -461,11 +459,9 @@
  "Indique le prix payé (0 si offerte).": "Indica o preço pago (0 se foi oferecida).",
  "Poids invalide.": "Peso inválido.",
  "Tare invalide.": "Tara inválida.",
- "Indique le poids restant.": "Indica o peso restante.",
  "Bobine modifiée": "Bobina editada",
  "Bobine ajoutée": "Bobina adicionada",
  "Poids restant à l’ajout": "Peso restante ao adicionar",
- "Poids restant enregistré": "Peso restante registado",
  "Selon l'appli": "Segundo a aplicação",
  "Pesée": "Pesagem",
  "Plus que le poids initial ({}) : bobine vide oubliée ?": "Mais do que o peso inicial ({}): esqueceste-te de descontar a bobina vazia?",
@@ -1238,5 +1234,11 @@
  "Rien n'a été modifié : cette commande a changé sur un autre appareil entre-temps (elle est maintenant « {} »).": "Nada foi alterado: esta encomenda mudou noutro dispositivo entretanto (agora está « {} »).",
  "Rien n'a été modifié : cet élément a changé sur un autre appareil entre-temps.": "Nada foi alterado: este elemento mudou noutro dispositivo entretanto.",
  "bilan": "resumo",
- "etiquettes": "etiquetas"
+ "etiquettes": "etiquetas",
+ "Poids actuel du rouleau": "Peso atual do rolo",
+ "bobine neuve": "bobina nova",
+ "Ce qu’il reste aujourd’hui, sans la bobine vide. Chaque production le fait baisser toute seule.": "O que resta hoje, sem a bobina vazia. Cada produção faz este valor descer sozinho.",
+ "Bobine déjà entamée ? Indique ce qu’il reste (sans la bobine vide). Laisse vide si elle est neuve.": "Bobina já começada? Indica o que resta (sem a bobina vazia). Deixa vazio se for nova.",
+ "Poids actuel saisi": "Peso atual registado",
+ "Poids actuel enregistré : {}": "Peso atual registado: {}"
 }

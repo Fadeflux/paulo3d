@@ -651,3 +651,18 @@ test('icônes : toutes celles demandées sont présentes dans le build', () => {
   }
   assert.match(app.APP_VERSION, /^\d+\.\d+\.\d+-[0-9a-f]{8}$/);
 });
+
+// Demande d'André (06/10) : saisir le grammage actuel du rouleau, et que les productions
+// descendent à partir de LÀ (et non du poids de la bobine neuve).
+test('poids actuel saisi : les productions suivantes partent de ce poids', () => {
+  const f = fixture();
+  const poidsActuel = ['spool.weigh', { id: app.uuid(), spool_id: f.S1, measured_g: 640, occurred_at: '2026-09-01T08:00:00Z' }];
+  const S0 = applyOps(app, [...f.ops, poidsActuel]);
+  assert.equal(S0.spools.get(f.S1).remaining_weight_g, 640, 'le rouleau affiche le poids saisi');
+  const V = view(S0);
+  const { payload } = app.planProduction(V, { template: V.templates.get(f.T), quantity: 1, occurredAt: '2026-09-02T08:00:00Z' });
+  const prisSurS1 = payload.consumption.find((c) => c.spool_id === f.S1).grams;
+  assert.ok(prisSurS1 > 0);
+  const S = applyOps(app, [...f.ops, poidsActuel, ['production.launch', payload]]);
+  assert.equal(S.spools.get(f.S1).remaining_weight_g, app.roundDb(640 - prisSurS1, 2), 'la production déduit du poids saisi');
+});

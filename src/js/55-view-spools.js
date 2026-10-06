@@ -175,7 +175,10 @@ function openSpoolModal({ spool = null, duplicate = false }) {
     base.archived = false;
     base.purchased_at = toLocalInput().slice(0, 10);
   }
-  const d = { s: base, started: false, remainingNow: null, busy: false };
+  // Poids actuel du rouleau : en modification, ce qu'il reste aujourd'hui (modifiable) ; à l'ajout,
+  // vide = bobine neuve. Enregistré comme une pesée : les productions le font baisser toutes seules.
+  const restantOuverture = editing ? roundDb(Math.max(0, toNum(spool.remaining_weight_g)), 2) : null;
+  const d = { s: base, remainingNow: restantOuverture, busy: false };
   const V0 = Store.V;
   const knownMaterials = [...new Set([...MATERIALS, ...valuesOf(V0.spools).map((x) => x.material)])];
   const knownBrands = [...new Set([...valuesOf(V0.spools).map((x) => x.brand).filter(Boolean), ...BRANDS])];
@@ -215,11 +218,10 @@ function openSpoolModal({ spool = null, duplicate = false }) {
           ${field('Poids initial (net)', inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }))}
         </div>
         <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
-        ${editing ? '' : html`<div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
-          <label class="flex items-center justify-between gap-3"><span class="text-sm text-slate-200">Bobine déjà entamée</span>
-            <input type="checkbox" name="started" class="toggle" ${d.started ? raw('checked') : ''}/></label>
-          ${d.started ? html`<div class="mt-3">${field('Poids restant aujourd’hui (net, sans la bobine vide)', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: String(weighExample(d.s)), inputmode: 'numeric' }))}</div>` : ''}
-        </div>`}
+        <div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
+          ${field('Poids actuel du rouleau', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: editing ? String(weighExample(d.s)) : 'bobine neuve', inputmode: 'numeric' }),
+            { hint: editing ? 'Ce qu’il reste aujourd’hui, sans la bobine vide. Chaque production le fait baisser toute seule.' : 'Bobine déjà entamée ? Indique ce qu’il reste (sans la bobine vide). Laisse vide si elle est neuve.' })}
+        </div>
         <details class="group rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.s.tare_g || d.s.notes ? raw('open') : ''}>
           <summary class="flex cursor-pointer list-none items-center justify-between text-sm text-slate-300">Plus de détails<span class="transition group-open:rotate-180">${icon('ChevronDown', 'w-4 h-4')}</span></summary>
           <div class="mt-3 space-y-3">
@@ -234,11 +236,6 @@ function openSpoolModal({ spool = null, duplicate = false }) {
     onInput: (e, m) => {
       const el = e.target;
       if (!el.name) return;
-      if (el.name === 'started') {
-        d.started = el.checked;
-        m.render();
-        return;
-      }
       if (el.name === 'remainingNow') {
         d.remainingNow = parseNum(el.value);
         return;
@@ -269,9 +266,13 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         if (!Number.isFinite(d.s.price) || d.s.price < 0) { setFieldError(m.el, 'price', 'Indique le prix payé (0 si offerte).'); bad = true; }
         if (!Number.isFinite(d.s.initial_weight_g) || d.s.initial_weight_g <= 0) { setFieldError(m.el, 'initial_weight_g', 'Poids invalide.'); bad = true; }
         if (d.s.tare_g !== null && (!Number.isFinite(d.s.tare_g) || d.s.tare_g < 0)) { setFieldError(m.el, 'tare_g', 'Tare invalide.'); bad = true; }
-        const remaining = d.started ? parseNum(readForm(m.el).remainingNow) : null;
-        if (d.started && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', 'Indique le poids restant.'); bad = true; }
-        else if (d.started && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
+        const saisi = String(readForm(m.el).remainingNow ?? '').trim();
+        const remaining = saisi === '' ? null : parseNum(saisi);
+        if (saisi !== '' && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', 'Poids invalide.'); bad = true; }
+        else if (remaining !== null && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
+        // enregistré seulement s'il apporte une information : bobine entamée à l'ajout, ou poids changé
+        const peser = remaining !== null
+          && (editing ? roundDb(remaining, 2) !== restantOuverture : roundDb(remaining, 2) !== roundDb(toNum(d.s.initial_weight_g), 2));
         if (bad) return;
         d.busy = true;
         const payload = {
@@ -295,8 +296,8 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         }
         lsSet(lsKey('last_brand'), payload.brand);
         const res = await runOp('spool.save', payload, { success: editing ? 'Bobine modifiée' : 'Bobine ajoutée' });
-        if (opAccepted(res) && d.started) {
-          await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: 'Poids restant à l’ajout' }, { success: 'Poids restant enregistré' });
+        if (opAccepted(res) && peser) {
+          await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: editing ? 'Poids actuel saisi' : 'Poids restant à l’ajout' }, { success: `Poids actuel enregistré : ${fmtG(remaining)}` });
         }
         d.busy = false;
         if (opAccepted(res)) m.close();
