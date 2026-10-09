@@ -231,18 +231,19 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         </div>
         <div class="grid grid-cols-2 gap-3">
           ${field("Prix d'achat", inputNum('price', d.s.price, { suffix: '€', placeholder: '22,00' }))}
-          ${field('Poids initial (net)', inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }))}
+          ${field('Filament sur une bobine neuve', inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }), { hint: 'Ce qui est écrit sur l’emballage (le plus souvent 1 000 g).' })}
         </div>
-        <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
+        <div class="flex flex-wrap gap-1.5" role="group" aria-label="Poids courants d'une bobine neuve">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
         <div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
           ${field('Filament restant', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: editing ? '' : ui('neuve'), inputmode: 'numeric' }),
             { hint: editing ? 'Ce qu’il reste aujourd’hui, sans compter la bobine vide. Chaque production le déduit toute seule.' : 'Bobine déjà utilisée ? Indique le filament qui reste, sans compter la bobine vide. Laisse vide si elle est neuve.' })}
+          ${!editing && Number.isFinite(toNum(d.remainingNow, NaN)) && toNum(d.remainingNow) < toNum(d.s.initial_weight_g) ? html`<p class="mt-1.5 text-[12px] text-slate-400">Rouleau racheté entamé ? Mets le même chiffre dans « Filament sur une bobine neuve » : sinon le coût au gramme est calculé sur une bobine pleine, et tes prix de revient seront trop bas.</p>` : ''}
           <div id="restant-note" class="mt-1.5 text-[12px] text-amber-300">${noteRestant()}</div>
         </div>
         <details class="group rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.s.tare_g || d.s.notes ? raw('open') : ''}>
           <summary class="flex cursor-pointer list-none items-center justify-between text-sm text-slate-300">Plus de détails<span class="transition group-open:rotate-180">${icon('ChevronDown', 'w-4 h-4')}</span></summary>
           <div class="mt-3 space-y-3">
-            ${field('Poids de la bobine vide (tare)', inputNum('tare_g', d.s.tare_g, { suffix: 'g', placeholder: 'ex. 250', inputmode: 'numeric' }), { hint: 'Pèse une bobine vide de cette marque une fois : ensuite il suffit de poser la bobine sur la balance.' })}
+            ${field('Poids de la bobine vide', inputNum('tare_g', d.s.tare_g, { suffix: 'g', placeholder: 'ex. 250', inputmode: 'numeric' }), { hint: 'Pèse une bobine vide de cette marque une fois : ensuite il suffit de poser la bobine sur la balance.' })}
             ${field("Date d'achat", html`<input class="input" type="date" name="purchased_at" value="${d.s.purchased_at || ''}"/>`)}
             ${field('Notes', html`<textarea class="input h-20 py-2" name="notes" maxlength="1000" placeholder="Fournisseur, lot, réglages…">${d.s.notes || ''}</textarea>`)}
           </div>

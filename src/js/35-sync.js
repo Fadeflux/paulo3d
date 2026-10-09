@@ -246,6 +246,20 @@ const Sync = {
           if (!found) break;
           const op = { ...found, status: 'sending', attempts: (found.attempts || 0) + 1 };
           await Store.putOp(op);
+          // Une action PRÉCÉDENTE a été refusée (bobine jamais créée, lot inexistant…) : celle-ci part
+          // alors vers un échec incompréhensible (« élément lié supprimé »). On la refuse sur place,
+          // avec le vrai motif. Hors chaîne cassée, on n'anticipe rien : la base reste seule juge
+          // (un élément supprimé sur un autre appareil a sa propre réponse, P3D10).
+          const chaineCassee = Store.Q.some((o) => o.status === 'failed');
+          const defOp = OPS[op.type];
+          const avant = chaineCassee && defOp && defOp.validate ? defOp.validate(Store.V, op.payload) : null;
+          if (avant && !(defOp.done && defOp.done(Store.S, op.payload))) {
+            const refuse = { ...op, status: 'failed', error: { code: avant.code || 'LOCAL', message: avant.message, at: new Date().toISOString() } };
+            await Store.putOp(refuse);
+            Store.rebuild();
+            this.resolveWaiter(op, { state: 'failed', error: avant });
+            continue;
+          }
           let bundle;
           try {
             bundle = await this.backend.send(op);

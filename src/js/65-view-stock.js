@@ -247,6 +247,7 @@ function openProductionModal({ kind = 'production', templateId = null, quantity 
     const t = currentTemplate();
     const lines = Array.isArray(t.materials) ? t.materials : [];
     if (!lines.length) return html`<p class="text-[13px] text-slate-500">Ce template n'a aucune matière : seuls le temps machine et la main-d'œuvre sont comptés.</p>`;
+    const quand = () => (d.dateEdited ? fromLocalInput(d.occurredAt) : new Date().toISOString());
     const q = Math.max(1, Math.round(toNum(d.quantity, 1)));
     const k = d.kind === 'failure' ? clamp(toNum(d.failedPct, 100), 1, 100) / 100 : 1;
     const gramsModel = sum(lines, (l) => l.grams);
@@ -266,7 +267,8 @@ function openProductionModal({ kind = 'production', templateId = null, quantity 
           <span class="font-display text-sm font-semibold tabular-nums text-slate-100">${fmtG(need)}</span>
         </div>
         ${selectInput('spool', opts, chosen || '', { attrs: { 'data-line': i } })}
-        ${s ? html`<div class="mt-1.5 flex items-center justify-between text-[12px]"><span class="text-slate-500">Après : ${fmtG(toNum(s.remaining_weight_g) - need)}</span>${toNum(s.remaining_weight_g) - need < settingsOf(V).spool_critical_g ? html`<span class="text-amber-300">bobine presque vide</span>` : ''}</div>` : ''}
+        ${s ? (beforeLastWeigh(V, s.id, quand()) ? html`<div class="mt-1.5 text-[12px] text-amber-300">Après : ${fmtG(s.remaining_weight_g)} — ce print est daté AVANT la dernière pesée de la bobine : la pesée fait foi, rien ne sera déduit. Change la date, ou pèse la bobine après coup.</div>`
+          : html`<div class="mt-1.5 flex items-center justify-between text-[12px]"><span class="text-slate-500">Après : ${fmtG(toNum(s.remaining_weight_g) - need)}</span>${toNum(s.remaining_weight_g) - need < settingsOf(V).spool_critical_g ? html`<span class="text-amber-300">bobine presque vide</span>` : ''}</div>`) : ''}
       </div>`;
     })}</div>`;
   };

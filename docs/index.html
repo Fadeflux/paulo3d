@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Paulo3D — Oficina de impressão 3D</title>
 <meta name="description" content="Bobinas, custo de produção, produção, stock e vendas da oficina de impressão 3D.">
-<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-ThPrwbkffMQjHZba4SvvUEbS+5O0hoRfVI5HGsyb5DE=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://tjweersjswfuiutuqnvv.supabase.co wss://tjweersjswfuiutuqnvv.supabase.co https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; script-src 'self' 'sha256-hmlTQADSGHmegqeQDhgNWtj+YxJ5OGwKkJTc+fILgmo=' 'unsafe-inline' https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.116.0/dist/umd/supabase.min.js https://cdn.jsdelivr.net/npm/chart.js@4.5.1/dist/chart.umd.min.js https://cdn.jsdelivr.net/npm/jszip@3.10.2/dist/jszip.min.js https://cdn.jsdelivr.net/npm/qrcode-generator@2.0.4/dist/qrcode.js https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data: blob:; connect-src 'self' https://tjweersjswfuiutuqnvv.supabase.co wss://tjweersjswfuiutuqnvv.supabase.co https://cdn.jsdelivr.net https://fonts.googleapis.com https://fonts.gstatic.com; worker-src 'self'; manifest-src 'self'; frame-src 'none'; base-uri 'self'; form-action 'self'; object-src 'none'">
 <meta name="referrer" content="no-referrer">
 <meta name="robots" content="noindex, nofollow">
 <meta name="theme-color" content="#05070A">
@@ -80,7 +80,7 @@
    Socle : constantes, formats, HTML sûr, icônes, logo
    ============================================================================= */
 
-const APP_VERSION = "1.0.0-94156dff";
+const APP_VERSION = "1.0.0-89527be8";
 const SCHEMA_VERSION = 3;
 
 // Identité du site, remplie à la construction (tools/sites.mjs) : le même code sert plusieurs sites.
@@ -629,6 +629,21 @@ function computeSpoolRemaining(spool, movements) {
   const base = last ? toNum(last.measured_g) : toNum(spool.initial_weight_g);
   const deltas = mine.filter((m) => m.kind !== 'weigh' && (!last || time(m.occurred_at) > time(last.occurred_at)));
   return roundDb(base + sum(deltas, (m) => m.delta_g), 2);
+}
+
+// Dernière pesée d'une bobine (celle qui sert de base au poids restant), ou null
+function lastWeigh(V, spoolId) {
+  let last = null;
+  for (const m of valuesOf(V.spool_movements)) {
+    if (m.spool_id !== spoolId || m.kind !== 'weigh') continue;
+    if (!last || time(m.occurred_at) > time(last.occurred_at)) last = m;
+  }
+  return last;
+}
+// Une consommation datée AVANT la dernière pesée ne change pas le poids restant (la pesée fait foi)
+function beforeLastWeigh(V, spoolId, occurredAt) {
+  const w = lastWeigh(V, spoolId);
+  return !!w && time(occurredAt) <= time(w.occurred_at);
 }
 
 // Bobines compatibles avec une ligne de matière, la plus proche en couleur d'abord
@@ -3215,6 +3230,20 @@ const Sync = {
           if (!found) break;
           const op = { ...found, status: 'sending', attempts: (found.attempts || 0) + 1 };
           await Store.putOp(op);
+          // Une action PRÉCÉDENTE a été refusée (bobine jamais créée, lot inexistant…) : celle-ci part
+          // alors vers un échec incompréhensible (« élément lié supprimé »). On la refuse sur place,
+          // avec le vrai motif. Hors chaîne cassée, on n'anticipe rien : la base reste seule juge
+          // (un élément supprimé sur un autre appareil a sa propre réponse, P3D10).
+          const chaineCassee = Store.Q.some((o) => o.status === 'failed');
+          const defOp = OPS[op.type];
+          const avant = chaineCassee && defOp && defOp.validate ? defOp.validate(Store.V, op.payload) : null;
+          if (avant && !(defOp.done && defOp.done(Store.S, op.payload))) {
+            const refuse = { ...op, status: 'failed', error: { code: avant.code || 'LOCAL', message: avant.message, at: new Date().toISOString() } };
+            await Store.putOp(refuse);
+            Store.rebuild();
+            this.resolveWaiter(op, { state: 'failed', error: avant });
+            continue;
+          }
           let bundle;
           try {
             bundle = await this.backend.send(op);
@@ -4784,18 +4813,19 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         </div>
         <div class="grid grid-cols-2 gap-3">
           ${field("Preço de compra", inputNum('price', d.s.price, { suffix: '€', placeholder: '22,00' }))}
-          ${field("Peso inicial (líquido)", inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }))}
+          ${field("Filamento numa bobina nova", inputNum('initial_weight_g', d.s.initial_weight_g, { suffix: 'g', placeholder: '1000', inputmode: 'numeric' }), { hint: "O que vem escrito na embalagem (normalmente 1000 g)." })}
         </div>
-        <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
+        <div class="flex flex-wrap gap-1.5" role="group" aria-label="Pesos habituais de uma bobina nova">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
         <div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
           ${field("Filamento restante", inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: editing ? '' : ui("nova"), inputmode: 'numeric' }),
             { hint: editing ? "O que resta hoje, sem contar a bobina vazia. Cada produção desconta-o automaticamente." : "A bobina já foi usada? Indica o filamento que resta, sem contar a bobina vazia. Deixa vazio se estiver nova." })}
+          ${!editing && Number.isFinite(toNum(d.remainingNow, NaN)) && toNum(d.remainingNow) < toNum(d.s.initial_weight_g) ? html`<p class="mt-1.5 text-[12px] text-slate-400">Compraste a bobina já começada? Põe o mesmo valor em «Filamento numa bobina nova»: caso contrário o custo por grama é calculado sobre uma bobina cheia e os teus custos de produção ficam demasiado baixos.</p>` : ''}
           <div id="restant-note" class="mt-1.5 text-[12px] text-amber-300">${noteRestant()}</div>
         </div>
         <details class="group rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.s.tare_g || d.s.notes ? raw('open') : ''}>
           <summary class="flex cursor-pointer list-none items-center justify-between text-sm text-slate-300">Mais detalhes<span class="transition group-open:rotate-180">${icon('ChevronDown', 'w-4 h-4')}</span></summary>
           <div class="mt-3 space-y-3">
-            ${field("Peso da bobina vazia (tara)", inputNum('tare_g', d.s.tare_g, { suffix: 'g', placeholder: 'ex. 250', inputmode: 'numeric' }), { hint: "Pesa uma bobina vazia desta marca uma vez: depois basta pôr a bobina na balança." })}
+            ${field("Peso da bobina vazia", inputNum('tare_g', d.s.tare_g, { suffix: 'g', placeholder: 'ex. 250', inputmode: 'numeric' }), { hint: "Pesa uma bobina vazia desta marca uma vez: depois basta pôr a bobina na balança." })}
             ${field("Data de compra", html`<input class="input" type="date" name="purchased_at" value="${d.s.purchased_at || ''}"/>`)}
             ${field("Notas", html`<textarea class="input h-20 py-2" name="notes" maxlength="1000" placeholder="Fornecedor, lote, definições…">${d.s.notes || ''}</textarea>`)}
           </div>
@@ -5824,6 +5854,7 @@ function openProductionModal({ kind = 'production', templateId = null, quantity 
     const t = currentTemplate();
     const lines = Array.isArray(t.materials) ? t.materials : [];
     if (!lines.length) return html`<p class="text-[13px] text-slate-500">Este modelo não tem nenhum material: só contam o tempo de máquina e a mão de obra.</p>`;
+    const quand = () => (d.dateEdited ? fromLocalInput(d.occurredAt) : new Date().toISOString());
     const q = Math.max(1, Math.round(toNum(d.quantity, 1)));
     const k = d.kind === 'failure' ? clamp(toNum(d.failedPct, 100), 1, 100) / 100 : 1;
     const gramsModel = sum(lines, (l) => l.grams);
@@ -5843,7 +5874,8 @@ function openProductionModal({ kind = 'production', templateId = null, quantity 
           <span class="font-display text-sm font-semibold tabular-nums text-slate-100">${fmtG(need)}</span>
         </div>
         ${selectInput('spool', opts, chosen || '', { attrs: { 'data-line': i } })}
-        ${s ? html`<div class="mt-1.5 flex items-center justify-between text-[12px]"><span class="text-slate-500">Depois: ${fmtG(toNum(s.remaining_weight_g) - need)}</span>${toNum(s.remaining_weight_g) - need < settingsOf(V).spool_critical_g ? html`<span class="text-amber-300">bobina quase vazia</span>` : ''}</div>` : ''}
+        ${s ? (beforeLastWeigh(V, s.id, quand()) ? html`<div class="mt-1.5 text-[12px] text-amber-300">Depois: ${fmtG(s.remaining_weight_g)} — esta impressão está datada ANTES da última pesagem da bobina: a pesagem é que conta, não vai ser descontado nada. Muda a data ou pesa a bobina a seguir.</div>`
+          : html`<div class="mt-1.5 flex items-center justify-between text-[12px]"><span class="text-slate-500">Depois: ${fmtG(toNum(s.remaining_weight_g) - need)}</span>${toNum(s.remaining_weight_g) - need < settingsOf(V).spool_critical_g ? html`<span class="text-amber-300">bobina quase vazia</span>` : ''}</div>`) : ''}
       </div>`;
     })}</div>`;
   };
@@ -9087,10 +9119,20 @@ const Boot = {
       this.updateRequested = true;
       const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
       const target = (reg && reg.waiting) || this.pendingWorker;
-      if (target) target.postMessage({ type: 'SKIP_WAITING' });
+      if (!target) {
+        // plus rien en attente : on redemande au serveur plutôt que de recharger la MÊME version
+        this.updateOffered = false;
+        bar.remove();
+        if (reg) reg.update().catch(() => {});
+        return;
+      }
+      target.postMessage({ type: 'SKIP_WAITING' });
       setTimeout(() => location.reload(), 4000);
     });
-    bar.querySelector('[data-dismiss]').addEventListener('click', () => bar.remove());
+    bar.querySelector('[data-dismiss]').addEventListener('click', () => {
+      bar.remove();
+      this.updateOffered = false; // une version encore plus récente pourra se proposer de nouveau
+    });
     document.body.appendChild(bar);
   },
 };

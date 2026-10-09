@@ -448,8 +448,6 @@
  "Plus de détails": "Mais detalhes",
  "Nom de la couleur (ex. Noir mat)": "Nome da cor (ex. Preto mate)",
  "Prix d'achat": "Preço de compra",
- "Poids initial (net)": "Peso inicial (líquido)",
- "Poids de la bobine vide (tare)": "Peso da bobina vazia (tara)",
  "Pèse une bobine vide de cette marque une fois : ensuite il suffit de poser la bobine sur la balance.": "Pesa uma bobina vazia desta marca uma vez: depois basta pôr a bobina na balança.",
  "Notes": "Notas",
  "Fournisseur, lot, réglages…": "Fornecedor, lote, definições…",
@@ -1247,5 +1245,10 @@
  "Bobine déjà utilisée ? Indique le filament qui reste, sans compter la bobine vide. Laisse vide si elle est neuve.": "A bobina já foi usada? Indica o filamento que resta, sem contar a bobina vazia. Deixa vazio se estiver nova.",
  "Le filament restant n’a pas pu être enregistré : réessaie depuis « Peser ».": "Não foi possível registar o filamento restante: tenta de novo a partir de «Pesar».",
  "Ventes hors port": "Vendas sem portes",
- "neuve": "nova"
+ "neuve": "nova",
+ "Poids courants d'une bobine neuve": "Pesos habituais de uma bobina nova",
+ "Filament sur une bobine neuve": "Filamento numa bobina nova",
+ "Ce qui est écrit sur l’emballage (le plus souvent 1 000 g).": "O que vem escrito na embalagem (normalmente 1000 g).",
+ "Rouleau racheté entamé ? Mets le même chiffre dans « Filament sur une bobine neuve » : sinon le coût au gramme est calculé sur une bobine pleine, et tes prix de revient seront trop bas.": "Compraste a bobina já começada? Põe o mesmo valor em «Filamento numa bobina nova»: caso contrário o custo por grama é calculado sobre uma bobina cheia e os teus custos de produção ficam demasiado baixos.",
+ "Après : {} — ce print est daté AVANT la dernière pesée de la bobine : la pesée fait foi, rien ne sera déduit. Change la date, ou pèse la bobine après coup.": "Depois: {} — esta impressão está datada ANTES da última pesagem da bobina: a pesagem é que conta, não vai ser descontado nada. Muda a data ou pesa a bobina a seguir."
 }

@@ -97,3 +97,30 @@ test('lien « #p3d-import= » : plus aucune action injectée dans la file', () =
   assert.equal(adresse, '/#/', 'le lien est effacé de la barre d’adresse');
   assert.equal(typeof Boot.importOldAddress, 'undefined', 'le mécanisme de reprise n’existe plus');
 });
+
+test('production datée avant la dernière pesée : l’écran prévient au lieu de promettre une déduction', () => {
+  const S = app.emptyState();
+  const id = uuid();
+  S.spools.set(id, { id, owner_id: U, brand: 'B', material: 'PLA', color_name: 'Noir', color_hex: '#111111', price: 20, initial_weight_g: 1000, tare_g: null, remaining_weight_g: 880, archived: false, created_at: T, updated_at: T });
+  S.spool_movements.set('m1', { id: 'm1', owner_id: U, spool_id: id, kind: 'weigh', delta_g: 0, measured_g: 880, occurred_at: '2026-10-08T20:00:00Z', created_at: '2026-10-08T20:00:00Z', note: null });
+  const V = { ...app.cloneState(S), userId: U, pending: new Set() };
+  assert.equal(app.beforeLastWeigh(V, id, '2026-10-08T15:00:00Z'), true, 'print de l’après-midi, pesé le soir : rien ne sera déduit');
+  assert.equal(app.beforeLastWeigh(V, id, '2026-10-09T09:00:00Z'), false, 'print d’après la pesée : déduit normalement');
+});
+
+test('action qui suit une action refusée : refusée sur place avec le vrai motif, jamais envoyée', async () => {
+  const w = boot();
+  resetStore(w.Store, w.app);
+  const envoyes = [];
+  w.Sync.backend = fakeBackend((n, op) => { envoyes.push(op.type); return {}; });
+  // la bobine n'existe pas (son enregistrement a été refusé) : la pesée qui suit est vouée à l'échec
+  await w.Store.putOp({ id: 'op-s', type: 'spool.save', payload: { id: uuid(), brand: 'B', material: 'PLA', color_name: 'X', color_hex: '#111111', price: 1, initial_weight_g: 1000, tare_g: null, purchased_at: null, notes: null, archived: false }, status: 'failed', seq: 1, created_at: T, attempts: 1, error: { code: '23514', message: 'refusée', at: T } });
+  await w.Store.putOp({ id: 'op-w', type: 'spool.weigh', payload: { id: uuid(), spool_id: uuid(), measured_g: 500, occurred_at: T }, status: 'pending', seq: 2, created_at: T, attempts: 0 });
+  w.Store.rebuild();
+  await w.Sync.flush();
+  await sleep(20);
+  assert.deepEqual(envoyes, [], 'rien n’est envoyé à la base');
+  const pesee = w.Store.Q.find((o) => o.id === 'op-w');
+  assert.equal(pesee.status, 'failed');
+  assert.match(pesee.error.message, /Bobine introuvable/, 'le vrai motif, pas « élément lié supprimé »');
+});

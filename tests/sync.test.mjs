@@ -102,7 +102,10 @@ test('modification d’une bobine que la base n’a pas (0 ligne modifiée) : re
   await idle(Sync);
   assert.deepEqual(Store.Q.map((o) => `${o.type}:${o.status}`), ['spool.save:failed', 'spool.patch:failed']);
   assert.equal(Sync.confirmedWhileAway, 0);
-  assert.match(Store.Q[1].error.message, /n'existe plus/);
+  // (09/10) L'enregistrement de la bobine ayant été refusé, la modification qui suit n'est plus
+  // envoyée du tout : elle est refusée sur place avec le vrai motif, au lieu de partir chercher
+  // une erreur de clé étrangère que l'utilisateur ne peut pas comprendre.
+  assert.match(Store.Q[1].error.message, /Bobine introuvable/);
 
   const saved = await Sync.enqueue('template.save', { id: app.uuid(), name: 'T', materials: [] }, { wait: 500 });
   assert.equal(saved.state, 'failed', 'enregistrement bloqué par le registre des suppressions (0 ligne) = refus');

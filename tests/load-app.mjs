@@ -19,7 +19,7 @@ export function loadApp(extra = {}, appFile = 'app.js') {
     'buildView', 'emptyState', 'cloneState', 'uuid', 'html', 'raw', 'esc', 'parseNum', 'roundDb', 'round', 'fmtEur', 'fmtG', 'fmtDuration',
     'safeHex', 'colorDistance', 'periodRange', 'inRange', 'settingsOf', 'spoolCpg', 'spoolStatus', 'computeSpoolRemaining', 'candidateSpools',
     'suggestSpool', 'lineCpg', 'templateCost', 'roundPrice', 'pricingOf', 'suggestPrice', 'marginInfo', 'templatePrice', 'planProduction',
-    'simulateFifo', 'lotMatches', 'fifoCmp', 'stockGroups', 'planSale', 'channelFee', 'computeStats', 'monthlySeries', 'topProducts', 'historyEvents', 'toCsv', 'csvCell',
+    'simulateFifo', 'lotMatches', 'fifoCmp', 'beforeLastWeigh', 'lastWeigh', 'stockGroups', 'planSale', 'channelFee', 'computeStats', 'monthlySeries', 'topProducts', 'historyEvents', 'toCsv', 'csvCell',
     'exportCsvSales', 'exportJson', 'parseDurationToMin', 'parseBambuSliceInfo', 'parseGcodeText', 'parseSlicerText', 'importToTemplate',
     'normalizeMaterial', 'materialKey', 'classifyError', 'friendlyError', 'normalizeSupaUrl', 'projectRefFromUrl', 'keyProblem', 'b64urlEncode', 'b64urlDecode',
     'valuesOf', 'firstRow', 'pick', 'SPOOL_FIELDS', 'TEMPLATE_FIELDS', 'MACHINE_FIELDS', 'SETTINGS_FIELDS', 'REMOTE', 'ICONS', 'APP_VERSION',

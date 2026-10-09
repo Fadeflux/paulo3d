@@ -341,10 +341,20 @@ const Boot = {
       this.updateRequested = true;
       const reg = await navigator.serviceWorker.getRegistration().catch(() => null);
       const target = (reg && reg.waiting) || this.pendingWorker;
-      if (target) target.postMessage({ type: 'SKIP_WAITING' });
+      if (!target) {
+        // plus rien en attente : on redemande au serveur plutôt que de recharger la MÊME version
+        this.updateOffered = false;
+        bar.remove();
+        if (reg) reg.update().catch(() => {});
+        return;
+      }
+      target.postMessage({ type: 'SKIP_WAITING' });
       setTimeout(() => location.reload(), 4000);
     });
-    bar.querySelector('[data-dismiss]').addEventListener('click', () => bar.remove());
+    bar.querySelector('[data-dismiss]').addEventListener('click', () => {
+      bar.remove();
+      this.updateOffered = false; // une version encore plus récente pourra se proposer de nouveau
+    });
     document.body.appendChild(bar);
   },
 };

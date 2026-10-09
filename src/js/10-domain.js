@@ -228,6 +228,21 @@ function computeSpoolRemaining(spool, movements) {
   return roundDb(base + sum(deltas, (m) => m.delta_g), 2);
 }
 
+// Dernière pesée d'une bobine (celle qui sert de base au poids restant), ou null
+function lastWeigh(V, spoolId) {
+  let last = null;
+  for (const m of valuesOf(V.spool_movements)) {
+    if (m.spool_id !== spoolId || m.kind !== 'weigh') continue;
+    if (!last || time(m.occurred_at) > time(last.occurred_at)) last = m;
+  }
+  return last;
+}
+// Une consommation datée AVANT la dernière pesée ne change pas le poids restant (la pesée fait foi)
+function beforeLastWeigh(V, spoolId, occurredAt) {
+  const w = lastWeigh(V, spoolId);
+  return !!w && time(occurredAt) <= time(w.occurred_at);
+}
+
 // Bobines compatibles avec une ligne de matière, la plus proche en couleur d'abord
 function candidateSpools(V, line, { needGrams = 0 } = {}) {
   const key = materialKey(line.material);
