@@ -62,12 +62,15 @@ const Mfa = {
       const locaux = (s && s.session && s.session.user && s.session.user.factors) || [];
       if (locaux.some((f) => f.status === 'verified' && f.factor_type === 'totp')) return false;
     } catch { /* session illisible : on demande au serveur */ }
+    // hors-ligne : on n'impose rien (la base refuse de toute façon toute écriture sans le code).
+    // Toute AUTRE erreur impose l'activation : ne jamais laisser entrer sur un doute.
+    const sansReseau = (e) => classifyError(wrapError(e, e && e.status)) === 'network';
     try {
       const { data, error } = await backend.sb.auth.mfa.listFactors();
-      if (error) return false;
+      if (error) return !sansReseau(error);
       return !((data && data.totp) || []).some((f) => f.status === 'verified');
-    } catch {
-      return false;
+    } catch (e) {
+      return !sansReseau(e);
     }
   },
 
@@ -94,7 +97,7 @@ Screens.mfa = function mfaScreen({ backend, user, factorId }) {
       </form>
       <div class="mt-4 flex flex-wrap items-center justify-between gap-2 text-[13px]">
         <button class="text-slate-400 hover:text-slate-200" id="mfa-logout">Se déconnecter</button>
-        ${navigator.onLine === false ? html`<button class="font-medium text-neon" id="mfa-offline">Continuer hors-ligne</button>` : ''}
+        ${navigator.onLine === false && lsGet(LS.mfaVu, false) ? html`<button class="font-medium text-neon" id="mfa-offline">Continuer hors-ligne</button>` : ''}
       </div>
     </div>`);
   const form = el.querySelector('#mfa-form');
@@ -113,6 +116,7 @@ Screens.mfa = function mfaScreen({ backend, user, factorId }) {
     try {
       const err = await Mfa.verify(backend, factorId, code);
       if (err) return show(authErrorMessage(err));
+      lsSet(LS.mfaVu, true); // code déjà validé ici : la copie locale restera consultable hors-ligne
       await Boot.enter(backend, user);
     } catch (err) {
       show(authErrorMessage(err));

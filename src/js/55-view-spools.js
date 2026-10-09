@@ -6,7 +6,7 @@ const BRANDS = ['Bambu Lab', 'Polymaker', 'Prusament', 'eSun', 'Sunlu', 'Elegoo'
 
 const COLOR_PRESETS = [
   ['Noir', '#111111'], ['Blanc', '#F5F5F5'], ['Gris', '#8A8F98'], ['Rouge', '#E0262F'], ['Orange', '#F97316'], ['Jaune', '#FACC15'],
-  ['Vert', '#22C55E'], ['Bleu', '#2563EB'], ['Cyan', '#06B6D4'], ['Violet', '#7C3AED'], ['Rose', '#EC4899'], ['Marron', '#7C4A2D'],
+  ['Vert', '#22C55E'], ['Bleu', '#2563EB'], ['Cyan', '#06B6D4'], ['Violet', '#7C3AED'], [ui('Rose'), '#EC4899'], ['Marron', '#7C4A2D'],
   ['Beige', '#D6C3A1'], ['Or', '#C9A227'], ['Argent', '#C0C4CC'], ['Transparent', '#DDE7EE'],
 ];
 
@@ -44,7 +44,7 @@ VIEWS.bobines = {
       <div class="mb-4 grid grid-cols-3 gap-2">
         <div class="card px-3 py-3"><div class="text-[11px] text-slate-500">Filament restant</div><div class="font-display text-lg font-bold tabular-nums text-slate-50 sm:text-xl">${fmtKg(totalG)}</div></div>
         <div class="card px-3 py-3"><div class="text-[11px] text-slate-500">Valeur restante</div><div class="font-display text-lg font-bold tabular-nums text-slate-50 sm:text-xl">${fmtEur(valueLeft)}</div></div>
-        <button data-action="spool-view" data-value="${view === 'alert' ? 'active' : 'alert'}" class="card px-3 py-3 text-left ${alerts.length ? 'border-amber-400/25' : ''}"><div class="text-[11px] text-slate-500">En alerte</div><div class="font-display text-lg font-bold tabular-nums sm:text-xl ${alerts.length ? 'text-amber-300' : 'text-slate-50'}">${fmtNum(alerts.length)}</div></button>
+        <button data-action="spool-view" data-value="${view === 'alert' ? 'active' : 'alert'}" aria-pressed="${view === 'alert'}" title="${view === 'alert' ? 'Voir toutes les bobines actives' : 'Voir seulement les bobines en alerte'}" class="card px-3 py-3 text-left ${alerts.length ? 'border-amber-400/25' : ''}"><div class="text-[11px] text-slate-500">En alerte</div><div class="font-display text-lg font-bold tabular-nums sm:text-xl ${alerts.length ? 'text-amber-300' : 'text-slate-50'}">${fmtNum(alerts.length)}</div></button>
       </div>
       <div class="mb-4 flex flex-col gap-3">
         <div class="flex flex-wrap items-center gap-2">
@@ -175,13 +175,29 @@ function openSpoolModal({ spool = null, duplicate = false }) {
     base.archived = false;
     base.purchased_at = toLocalInput().slice(0, 10);
   }
-  // Poids actuel du rouleau : en modification, ce qu'il reste aujourd'hui (modifiable) ; à l'ajout,
-  // vide = bobine neuve. Enregistré comme une pesée : les productions le font baisser toutes seules.
-  const restantOuverture = editing ? roundDb(Math.max(0, toNum(spool.remaining_weight_g)), 2) : null;
-  const d = { s: base, remainingNow: restantOuverture, busy: false };
+  // Filament restant : en modification, ce qu'il reste aujourd'hui (modifiable) ; à l'ajout, vide =
+  // bobine neuve. Enregistré comme une pesée : les productions le font baisser toutes seules.
+  // Écart négatif (consommations déclarées au-delà du rouleau) : champ VIDE, pour que taper 0 compte
+  // comme une vraie correction (un 0 pré-rempli serait pris pour « inchangé » et ne corrigerait rien).
+  const restantOuverture = editing && toNum(spool.remaining_weight_g) >= 0 ? roundDb(toNum(spool.remaining_weight_g), 2) : null;
+  // une pesée existe : le restant ne dépend plus du poids initial ; sinon il le suit
+  const pesee = editing && valuesOf(Store.V.spool_movements || new Map()).some((m) => m.spool_id === spool.id && m.kind === 'weigh');
+  const poidsInitialOuverture = toNum(base.initial_weight_g);
+  const d = { s: base, remainingNow: restantOuverture, touche: false, busy: false };
   const V0 = Store.V;
   const knownMaterials = [...new Set([...MATERIALS, ...valuesOf(V0.spools).map((x) => x.material)])];
   const knownBrands = [...new Set([...valuesOf(V0.spools).map((x) => x.brand).filter(Boolean), ...BRANDS])];
+
+  // La fenêtre « Peser » sait retrancher la bobine vide ; ce champ-ci attend le filament SEUL.
+  // Si le chiffre tapé ressemble au poids posé sur la balance (filament + bobine vide), on le dit.
+  const noteRestant = () => {
+    const tare = toNum(d.s.tare_g);
+    const v = toNum(d.remainingNow, NaN);
+    if (!(tare > 0) || !Number.isFinite(v)) return '';
+    const attendu = toNum(restantOuverture, toNum(d.s.initial_weight_g)) + tare;
+    if (Math.abs(v - attendu) > Math.max(5, tare * 0.1)) return '';
+    return `Est-ce le poids lu sur la balance, bobine comprise ? Sans la bobine vide (${fmtG(tare)}), cela ferait ${fmtG(v - tare)}.`;
+  };
 
   const summary = () => {
     const cpg = toNum(d.s.initial_weight_g) > 0 ? toNum(d.s.price) / toNum(d.s.initial_weight_g) : 0;
@@ -219,8 +235,9 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         </div>
         <div class="flex flex-wrap gap-1.5">${[250, 500, 750, 1000, 2000, 3000].map((w) => html`<button type="button" data-action="weight-preset" data-w="${w}" aria-pressed="${toNum(d.s.initial_weight_g) === w}" class="chip ${toNum(d.s.initial_weight_g) === w ? 'chip-active' : ''}">${w >= 1000 ? `${w / 1000} kg` : `${w} g`}</button>`)}</div>
         <div class="rounded-2xl border border-white/[0.06] bg-ink-850 p-3">
-          ${field('Poids actuel du rouleau', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: editing ? String(weighExample(d.s)) : 'bobine neuve', inputmode: 'numeric' }),
-            { hint: editing ? 'Ce qu’il reste aujourd’hui, sans la bobine vide. Chaque production le fait baisser toute seule.' : 'Bobine déjà entamée ? Indique ce qu’il reste (sans la bobine vide). Laisse vide si elle est neuve.' })}
+          ${field('Filament restant', inputNum('remainingNow', d.remainingNow, { suffix: 'g', placeholder: editing ? '' : ui('neuve'), inputmode: 'numeric' }),
+            { hint: editing ? 'Ce qu’il reste aujourd’hui, sans compter la bobine vide. Chaque production le déduit toute seule.' : 'Bobine déjà utilisée ? Indique le filament qui reste, sans compter la bobine vide. Laisse vide si elle est neuve.' })}
+          <div id="restant-note" class="mt-1.5 text-[12px] text-amber-300">${noteRestant()}</div>
         </div>
         <details class="group rounded-2xl border border-white/[0.06] bg-ink-850 p-3" ${d.s.tare_g || d.s.notes ? raw('open') : ''}>
           <summary class="flex cursor-pointer list-none items-center justify-between text-sm text-slate-300">Plus de détails<span class="transition group-open:rotate-180">${icon('ChevronDown', 'w-4 h-4')}</span></summary>
@@ -237,10 +254,21 @@ function openSpoolModal({ spool = null, duplicate = false }) {
       const el = e.target;
       if (!el.name) return;
       if (el.name === 'remainingNow') {
-        d.remainingNow = parseNum(el.value);
+        d.remainingNow = el.value.trim() === '' ? null : parseNum(el.value);
+        d.touche = true;
+        setFieldError(m.el, 'remainingNow', '');
+        m.update('#restant-note', noteRestant());
         return;
       }
       d.s[el.name] = el.hasAttribute('data-num') ? (el.value.trim() === '' ? null : parseNum(el.value)) : el.value;
+      // sans pesée, le restant SUIT le poids initial : le champ montrerait sinon un chiffre que
+      // l'enregistrement contredirait aussitôt
+      if (el.name === 'initial_weight_g' && !d.touche && !pesee && restantOuverture !== null) {
+        d.remainingNow = roundDb(restantOuverture + (toNum(d.s.initial_weight_g) - poidsInitialOuverture), 2);
+        const champ = m.q('[name="remainingNow"]');
+        if (champ) champ.value = fmtNum(d.remainingNow);
+      }
+      if (el.name === 'tare_g') m.update('#restant-note', noteRestant());
       if (el.name === 'color_hex') {
         const sw = m.q('#spool-color-swatch');
         if (sw) sw.style.background = safeHex(el.value);
@@ -256,6 +284,7 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         m.render();
       },
       'weight-preset': (el, e, m) => {
+        if (!d.touche && !pesee && restantOuverture !== null) d.remainingNow = roundDb(restantOuverture + (+el.dataset.w - poidsInitialOuverture), 2);
         d.s.initial_weight_g = +el.dataset.w;
         m.render();
       },
@@ -268,11 +297,11 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         if (d.s.tare_g !== null && (!Number.isFinite(d.s.tare_g) || d.s.tare_g < 0)) { setFieldError(m.el, 'tare_g', 'Tare invalide.'); bad = true; }
         const saisi = String(readForm(m.el).remainingNow ?? '').trim();
         const remaining = saisi === '' ? null : parseNum(saisi);
-        if (saisi !== '' && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', 'Poids invalide.'); bad = true; }
-        else if (remaining !== null && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
         // enregistré seulement s'il apporte une information : bobine entamée à l'ajout, ou poids changé
         const peser = remaining !== null
           && (editing ? roundDb(remaining, 2) !== restantOuverture : roundDb(remaining, 2) !== roundDb(toNum(d.s.initial_weight_g), 2));
+        if (saisi !== '' && (!Number.isFinite(remaining) || remaining < 0)) { setFieldError(m.el, 'remainingNow', 'Poids invalide.'); bad = true; }
+        else if (peser && !bad && weighProblem(d.s, remaining)) { setFieldError(m.el, 'remainingNow', weighProblem(d.s, remaining)); bad = true; }
         if (bad) return;
         d.busy = true;
         const payload = {
@@ -296,8 +325,10 @@ function openSpoolModal({ spool = null, duplicate = false }) {
         }
         lsSet(lsKey('last_brand'), payload.brand);
         const res = await runOp('spool.save', payload, { success: editing ? 'Bobine modifiée' : 'Bobine ajoutée' });
-        if (opAccepted(res) && peser) {
-          await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: editing ? 'Poids actuel saisi' : 'Poids restant à l’ajout' }, { success: `Poids actuel enregistré : ${fmtG(remaining)}` });
+        if (peser && opAccepted(res) && (res.state === 'queued' || Store.V.spools.has(payload.id))) {
+          await runOp('spool.weigh', { id: uuid(), spool_id: payload.id, measured_g: roundDb(remaining, 2), occurred_at: new Date().toISOString(), note: 'Filament restant' }, { success: `Pesée enregistrée : ${fmtG(remaining)}` });
+        } else if (peser && opAccepted(res)) {
+          toast('Le filament restant n’a pas pu être enregistré : réessaie depuis « Peser ».', { tone: 'warn' });
         }
         d.busy = false;
         if (opAccepted(res)) m.close();

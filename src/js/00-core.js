@@ -28,9 +28,8 @@ const LS = {
   ui: lsKey('ui'),
   demoOffline: lsKey('demo_offline'),
   demoSeeded: lsKey('demo_seeded'),
+  mfaVu: lsKey('mfa_vu'), // le code à 6 chiffres a déjà été validé sur cet appareil
   // actions reçues de l'ancienne adresse (fadeflux.github.io) déjà reprises : jamais deux fois
-  importes: lsKey('importes_ancienne_adresse'),
-  importEnAttente: lsKey('import_ancienne_adresse'),
 };
 
 const MATERIALS = ['PLA', 'PLA Silk', 'PLA Mat', 'PLA-CF', 'PETG', 'PETG-CF', 'ABS', 'ASA', 'TPU', 'PA', 'PC', 'PVA', 'Résine', 'Autre'];

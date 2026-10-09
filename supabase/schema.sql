@@ -688,7 +688,7 @@ as $$
 declare
   v_id   uuid := nullif(p ->> 'id', '')::uuid;
   v_kind text := coalesce(nullif(p ->> 'kind', ''), 'production');
-  v_at   timestamptz := coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now());
+  v_at   timestamptz := least(coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()), now());
   v_c    jsonb;
   v_g    numeric;
   v_template uuid := nullif(p ->> 'template_id', '')::uuid;
@@ -835,7 +835,7 @@ begin
     end if;
     insert into public.spool_movements (id, spool_id, kind, measured_g, note, occurred_at)
     values (v_id, v_spool, 'weigh', (p ->> 'measured_g')::numeric, nullif(p ->> 'note', ''),
-            coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))
+            least(coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()), now()))
     on conflict (id) do nothing;
   end if;
 
@@ -868,7 +868,7 @@ begin
     insert into public.production_stock (id, template_id, item_name, unit_cost, quantity, note, occurred_at)
     values (v_id, v_template, btrim(p ->> 'item_name'),
             coalesce(nullif(p ->> 'unit_cost', '')::numeric, 0), (p ->> 'quantity')::integer,
-            nullif(p ->> 'note', ''), coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()))
+            nullif(p ->> 'note', ''), least(coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()), now()))
     on conflict (id) do nothing;
   end if;
 
@@ -925,7 +925,7 @@ begin
       v_take := least(v_need, v_lot.qty_available);
       insert into public.stock_adjustments (group_id, lot_id, quantity, reason, unit_cost, note, occurred_at)
       values (v_group, v_lot.id, v_take, coalesce(nullif(p ->> 'reason', ''), 'casse'), v_lot.unit_cost,
-              nullif(p ->> 'note', ''), coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()));
+              nullif(p ->> 'note', ''), least(coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()), now()));
       v_need := v_need - v_take;
     end loop;
 
@@ -1019,7 +1019,7 @@ begin
     values (v_id, coalesce(nullif(p ->> 'channel', ''), 'direct'), nullif(p ->> 'customer', ''), nullif(p ->> 'note', ''),
             coalesce(nullif(p ->> 'shipping_charged', '')::numeric, 0), coalesce(nullif(p ->> 'shipping_cost', '')::numeric, 0),
             coalesce(nullif(p ->> 'packaging_cost', '')::numeric, 0), coalesce(nullif(p ->> 'platform_fee', '')::numeric, 0),
-            coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()));
+            least(coalesce(nullif(p ->> 'occurred_at', '')::timestamptz, now()), now()));
   exception when unique_violation then
     return public.p3d_sale_bundle(v_id);
   end;

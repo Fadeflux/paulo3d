@@ -11,16 +11,31 @@
 -- =============================================================================
 
 -- 1. Futurs objets : jamais ouverts aux visiteurs sans compte
-alter default privileges in schema public revoke all on tables from anon;
-alter default privileges in schema public revoke all on sequences from anon;
-alter default privileges in schema public revoke all on functions from anon;
+-- « for role » : sans lui, le réglage ne vaut que pour le rôle qui lance ce script ; un objet créé plus
+-- tard par un autre rôle (migration, outil tiers) redeviendrait ouvert. Seuls les rôles existants sont
+-- visés (ils changent d'un projet à l'autre).
+do $$
+declare
+  roles text;
+begin
+  select string_agg(quote_ident(rolname), ', ') into roles
+    from pg_roles where rolname in ('postgres', 'supabase_admin', 'service_role');
+  if roles is null then
+    raise notice 'aucun rôle connu : réglage appliqué au rôle courant seulement';
+    roles := quote_ident(current_user);
+  end if;
+  execute format('alter default privileges for role %s in schema public revoke all on tables from anon', roles);
+  execute format('alter default privileges for role %s in schema public revoke all on sequences from anon', roles);
+  execute format('alter default privileges for role %s in schema public revoke all on functions from anon', roles);
+  execute format('alter default privileges for role %s revoke execute on functions from public', roles);
+end
+$$;
 -- ⚠️ (19/09) Ne suffisait pas : PostgreSQL donne aussi le droit d'appeler toute NOUVELLE fonction à
 -- PUBLIC (donc à anon) — vérifié : une fonction créée plus tard était appelable sans compte. Ce droit
 -- est GLOBAL : un « in schema public » ne peut pas le retirer (doc PostgreSQL, ALTER DEFAULT
 -- PRIVILEGES : le réglage par schéma s'AJOUTE au réglage global). Retrait global, pour les objets créés
 -- par le rôle qui lance ce script. Les fonctions de l'appli n'en dépendent pas : schema.sql les
 -- accorde une à une (authenticated, et p3d_ping à anon).
-alter default privileges revoke execute on functions from public;
 
 -- 2. RLS automatique sur les nouvelles tables (sauf si le projet l'a déjà)
 create schema if not exists p3d_private;

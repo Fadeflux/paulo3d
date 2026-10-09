@@ -89,7 +89,9 @@ function reportTables(V, r) {
     },
     {
       title: 'Meilleures ventes',
-      cols: [['Pièce', 315, 'wrap'], ['Quantité', 90, 'num'], ['Chiffre d’affaires', 110, 'num']],
+      // le port facturé n'est rattaché à aucun produit : le total de cette colonne est donc inférieur
+      // au chiffre d'affaires de l'en-tête — l'intitulé le dit
+      cols: [['Pièce', 315, 'wrap'], ['Quantité', 90, 'num'], ['Ventes hors port', 110, 'num']],
       rows: r.tops.map((t) => [t.name, fmtNum(t.qty), fmtEur(t.revenue)]),
     },
     {

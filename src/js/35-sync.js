@@ -288,6 +288,7 @@ const Sync = {
               // session valide mais la base refuse encore : c'est un vrai refus
             }
             if (kind === 'schema') {
+              this.scheduleRetry(); // sinon plus rien ne repart avant 5 min et un écran visible
               await Store.putOp({ ...op, status: 'pending', authRetried: false });
               this.state.lastError = friendlyError(e, op);
               this.resolvePendingAsQueued();
@@ -325,7 +326,12 @@ const Sync = {
   },
 
   async pull({ reconcile = false } = {}) {
+    if (this.state.pulling && reconcile) this.reconcileWanted = true; // rejoué à la fin de la relecture en cours
     if (!this.backend || !this.backend.ready() || this.state.pulling || this.state.needsLogin || this.state.needsMfa) return;
+    if (this.reconcileWanted) {
+      this.reconcileWanted = false;
+      reconcile = true;
+    }
     this.state.pulling = true;
     this.emit();
     const startedAt = Date.now();
@@ -420,6 +426,13 @@ const Sync = {
   },
 
   async discardOp(opId) {
+    // une action en cours d'envoi peut être acceptée par la base juste après : l'oublier ici la ferait
+    // réapparaître (un encaissement que l'utilisateur croyait annulé)
+    const op = Store.Q.find((o) => o.id === opId);
+    if (op && op.status === 'sending') {
+      toast("Envoi en cours : attends la réponse de la base avant d'oublier cette action.", { tone: 'warn' });
+      return;
+    }
     await Store.removeOp(opId);
     Store.rebuild();
     this.emit();
@@ -437,8 +450,8 @@ const Sync = {
     if (s.needsMfa) return { tone: 'bad', label: 'Code requis', pending, failed };
     if (failed) return { tone: 'bad', label: `${plural(failed, 'action refusée', 'actions refusées')}`, pending, failed };
     if (!s.online) return { tone: 'off', label: pending ? `Hors-ligne · ${pending} en attente` : 'Hors-ligne', pending, failed };
-    if (pending || s.flushing) return { tone: 'warn', label: pending ? `Envoi · ${pending} en attente` : 'Envoi…', pending, failed };
     if (s.lastError) return { tone: 'bad', label: 'Base injoignable', pending, failed };
+    if (pending || s.flushing) return { tone: 'warn', label: pending ? `Envoi · ${pending} en attente` : 'Envoi…', pending, failed };
     if (!s.firstPullDone && s.pulling) return { tone: 'warn', label: 'Chargement…', pending, failed };
     return { tone: 'ok', label: 'Synchronisé', pending, failed };
   },

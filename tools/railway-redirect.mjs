@@ -1,6 +1,8 @@
 // Ancienne adresse Railway → adresse GitHub Pages (retour sur GitHub le 19/09).
 // Remplace le site servi par Railway par une redirection qui GARDE la fin du lien (#setup=…,
 // #/bobines?peser=… d'une étiquette imprimée, lien de mot de passe oublié).
+// (09/10) La reprise des actions par « #p3d-import » a été retirée : un lien pouvait injecter des
+// actions dans la file d'envoi de l'utilisateur. Cette page ne fait plus que rediriger.
 // Le service worker installé sur l'ancienne adresse est remplacé par un « interrupteur » qui efface
 // la copie hors-ligne (caches), se désinstalle et recharge les pages ouvertes → elles partent vers la
 // nouvelle adresse. La mémoire locale (IndexedDB) est GARDÉE : jamais d'effacement d'actions non envoyées.
@@ -24,33 +26,8 @@ if (!T) {
   process.exit(1);
 }
 
-// Actions faites hors connexion sur l'ancienne adresse et pas encore envoyées : la page les lit
-// (LECTURE SEULE, rien n'est effacé) et les emporte dans le lien (#p3d-import=…) ; l'appli les reprend
-// après connexion (Boot.importOldAddress : même compte seulement, jamais deux fois). Même mécanisme que
-// tools/redirect-old.mjs. Lecture impossible ou trop lente (8 s) : redirection simple.
-const carryScript = (idb, [avant, plusieurs, une, apres]) => [
-  '(function(){',
-  'var T=' + JSON.stringify(T.target) + ',fini=false;',
-  'function go(h){if(fini)return;fini=true;location.replace(T+(h===undefined?location.hash:h));}',
-  // session et réglages laissés sur l'ancienne adresse : effacés (la copie locale, elle, est gardée)
-  'try{Object.keys(localStorage).forEach(function(k){if(/^' + T.ls + '[_-]/.test(k))localStorage.removeItem(k)})}catch(e){}',
-  'if(!window.indexedDB||!indexedDB.databases){go();return;}',
-  'setTimeout(function(){go();},8000);',
-  'function lire(n){return new Promise(function(res){try{var r=indexedDB.open(n);',
-  'r.onupgradeneeded=function(){try{r.transaction.abort()}catch(e){}};r.onerror=r.onblocked=function(){res(null)};',
-  'r.onsuccess=function(){var db=r.result;try{if(!db.objectStoreNames.contains("kv")){db.close();return res(null);}',
-  'var q=db.transaction("kv","readonly").objectStore("kv").getAll(IDBKeyRange.bound("op:","op:\\uffff"));',
-  'q.onsuccess=function(){db.close();res({db:n,ops:q.result||[]})};q.onerror=function(){db.close();res(null)};}',
-  'catch(e){try{db.close()}catch(e2){}res(null)}};}catch(e){res(null)}});}',
-  'indexedDB.databases().then(function(l){return Promise.all((l||[]).map(function(d){return d.name}).filter(function(n){return n&&n.indexOf(' + JSON.stringify(idb) + ')===0}).map(lire));})',
-  '.then(function(p){p=(p||[]).filter(function(x){return x&&x.ops.length});if(!p.length)return go();',
-  'var n=p.reduce(function(a,x){return a+x.ops.length},0),m=document.getElementById("m");',
-  'if(m)m.textContent=' + JSON.stringify(avant) + '+n+(n>1?' + JSON.stringify(plusieurs) + ':' + JSON.stringify(une) + ')+' + JSON.stringify(apres) + ';',
-  'var s=btoa(unescape(encodeURIComponent(JSON.stringify(p)))).replace(/\\+/g,"-").replace(/\\//g,"_").replace(/=+$/,"");',
-  'go("#p3d-import="+s);})["catch"](function(){go();});',
-  '})();',
-].join('');
-const script = T.idb ? carryScript(T.idb, T.carry) : `location.replace(${JSON.stringify(T.target)} + location.hash);`;
+const script = `location.replace(${JSON.stringify(T.target)} + location.hash);`;
+
 const hash = crypto.createHash('sha256').update(script, 'utf8').digest('base64');
 const html = `<!doctype html>
 <html lang="${T.lang}">

@@ -69,8 +69,10 @@ function atelier({ reseau = true, refusVisible = false, echo = false } = {}) {
     assert.ok(refus, 'banc : un champ devait être refusé');
     return refus;
   };
+  // saisie d'un champ (onInput du vrai formulaire)
+  const saisir = ({ name, value, num = false }) => fenetre.onInput({ target: { name, value, hasAttribute: () => num, checked: false } }, { ...m, q: () => null, update: () => {} });
   const runOp = (type, payload) => get('runOp')(type, payload, {});
-  return { app, get, Store, Sync, envoyes, ouvrirBobine, ouvrirTemplate, enregistrer, soumettre, champRefuse, runOp, telephone };
+  return { app, get, Store, Sync, envoyes, ouvrirBobine, ouvrirTemplate, enregistrer, soumettre, champRefuse, runOp, saisir, telephone };
 }
 
 test('bobine modifiée sur le PC sans toucher la tare : ni la tare ni l’archivage ne sont renvoyés', async () => {
@@ -213,4 +215,36 @@ test('fiche bobine : un poids actuel plus lourd que la bobine neuve est refusé'
   assert.equal(refus.name, 'remainingNow');
   assert.match(refus.message, /plus que le poids initial/);
   assert.equal(w.envoyes.length, 0, 'rien n’est envoyé');
+});
+
+// Revue du 09/10 : le champ « Filament restant » ne doit jamais empêcher une autre correction.
+test('corriger le poids initial à la baisse : plus de refus à cause du champ pré-rempli', async () => {
+  const w = atelier();
+  const s = w.Store.V.spools.get(X);                       // 1 000 g, 1 000 g restants
+  w.ouvrirBobine({ spool: s });
+  // l'utilisateur découvre que le rouleau fait 750 g : il ne touche PAS au filament restant
+  const env = await actions(w, champs(s, { initial_weight_g: 750, remainingNow: 1000 }));
+  assert.deepEqual(env.map((e) => e.type), ['spool.save'], 'la correction part, sans pesée inventée');
+  assert.equal(env[0].payload.initial_weight_g, 750);
+});
+
+test('bobine en écart négatif : le champ est vide, et taper 0 enregistre vraiment la correction', async () => {
+  const w = atelier();
+  w.Store.upsertRows('spools', [{ ...BOBINE, remaining_weight_g: -200 }]);
+  w.Store.rebuild(true);
+  const s = w.Store.V.spools.get(X);
+  w.ouvrirBobine({ spool: s });
+  const env = await actions(w, champs(s, { remainingNow: 0 }));
+  assert.deepEqual(env.map((e) => e.type), ['spool.save', 'spool.weigh'], 'le 0 compte comme une pesée');
+  assert.equal(env[1].payload.measured_g, 0);
+});
+
+test('le poids initial change sans pesée : le champ suit, il ne ment pas', async () => {
+  const w = atelier();
+  const s = w.Store.V.spools.get(X);
+  w.ouvrirBobine({ spool: s });
+  // 1 000 -> 1 200 g : le restant réel passera de 1 000 à 1 200, le champ doit suivre
+  w.saisir({ name: 'initial_weight_g', value: '1200', num: true });
+  const env = await actions(w, champs(s, { initial_weight_g: 1200, remainingNow: 1200 }));
+  assert.deepEqual(env.map((e) => e.type), ['spool.save'], 'aucune pesée : le restant suit le poids initial');
 });

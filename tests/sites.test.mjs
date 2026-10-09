@@ -178,3 +178,19 @@ test('double authentification obligatoire sur les deux sites publiés, pas en ve
   }
   assert.equal(pt.dbMessage('Double authentification obligatoire : active-la pour continuer.'), 'Autenticação de dois fatores obrigatória: ativa-a para continuar.');
 });
+
+test('listes enregistrées en base : toutes traduites (couleurs, matières, causes de raté)', () => {
+  // ⚠️ Un nom choisi dans ces listes est ÉCRIT dans la base (titre de bobine, export, étiquette).
+  // « Rose » était resté en français parce que c'est aussi un nom d'icône : ui() le force au catalogue.
+  const dict = JSON.parse(fs.readFileSync(path.join(ROOT, 'i18n', 'pt-PT.json'), 'utf8'));
+  const src = fs.readFileSync(path.join(ROOT, 'src', 'js', '55-view-spools.js'), 'utf8');
+  const couleurs = [...src.matchAll(/\[(?:ui\()?'([^']+)'\)?, '#[0-9A-Fa-f]{6}'\]/g)].map((m) => m[1]);
+  assert.ok(couleurs.length >= 16, `banc : ${couleurs.length} couleurs trouvées`);
+  // les sigles techniques (PLA, PETG, ABS…) s'écrivent pareil dans les deux langues : on ne
+  // contrôle que ce qui contient un vrai mot
+  const manquants = [...couleurs, ...pt.MATERIALS, ...pt.FAILURE_REASONS]
+    .filter((x) => /[a-zà-ÿ]{3,}/.test(x))
+    .filter((x) => !(x in dict) && !Object.values(dict).includes(x));
+  assert.deepEqual(manquants, [], `textes enregistrés en base restés en français : ${manquants.join(', ')}`);
+  assert.equal(dict.Rose, 'Rosa');
+});

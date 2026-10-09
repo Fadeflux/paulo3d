@@ -178,11 +178,15 @@ function weighProblem(spool, measured) {
 }
 // Nombre de pièces saisi : un entier ≥ 1. Jamais arrondi en silence (« 1,5 » est une faute de frappe :
 // l'arrondir enregistrerait 2 pièces sans prévenir).
+const PIECES_MAX = 100000; // check (quantity between 1 and 100000) sur production_stock et sale_items
 function isPieceCount(v) {
   const n = toNum(v, NaN);
-  return Number.isInteger(n) && n >= 1;
+  return Number.isInteger(n) && n >= 1 && n <= PIECES_MAX;
 }
-const PIECES_ERROR = 'Nombre entier de pièces (1, 2, 3…).';
+const PIECES_ERROR = `Nombre entier de pièces, de 1 à ${fmtNum(PIECES_MAX)}.`;
+// Prix et frais : exactement ce que les colonnes acceptent (numeric(12,2), montants positifs)
+const MONEY_MAX = 1e8;
+const isMoney = (v, { positif = true } = {}) => Number.isFinite(toNum(v, NaN)) && toNum(v) < MONEY_MAX && (!positif || toNum(v) >= 0);
 
 // Champs d'une commande : EXACTEMENT les limites de la table orders (sinon l'action serait acceptée
 // hors-ligne puis refusée par la base). partial : seuls les champs présents sont vérifiés (modification).
@@ -440,11 +444,19 @@ function planProduction(V, opts, st = settingsOf(V)) {
 
 /* ---------- stock de pièces finies ---------- */
 function fifoCmp(a, b) {
-  return (time(a.occurred_at) - time(b.occurred_at)) || (time(a.created_at) - time(b.created_at)) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+  // microsecondes : la base trie « order by occurred_at, created_at, id » à cette précision. En
+  // millisecondes, deux lots créés dans la même milliseconde étaient départagés par leur identifiant,
+  // donc l'appli pouvait annoncer un coût de revient pris sur un AUTRE lot que celui de la base.
+  const d1 = tsMicros(a.occurred_at) - tsMicros(b.occurred_at);
+  const d2 = tsMicros(a.created_at) - tsMicros(b.created_at);
+  return (d1 > 0 ? 1 : d1 < 0 ? -1 : 0) || (d2 > 0 ? 1 : d2 < 0 ? -1 : 0) || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 }
 
+// Nom de pièce comparé sans les espaces des deux bouts, insécables comprises (un nom collé depuis une
+// annonce en contient souvent) : la base, elle, n'enlève que les espaces ordinaires avec btrim().
+const itemKey = (v) => String(v ?? '').replace(/^[\s\u00a0\u202f]+|[\s\u00a0\u202f]+$/g, '');
 function lotMatches(lot, templateId, itemName) {
-  return templateId ? lot.template_id === templateId : !lot.template_id && lot.item_name === String(itemName || '').trim();
+  return templateId ? lot.template_id === templateId : !lot.template_id && itemKey(lot.item_name) === itemKey(itemName);
 }
 
 function computeLotAvailable(lot, allocations, adjustments) {
@@ -753,7 +765,7 @@ function historyEvents(V, { range = null, type = 'all', q = '' } = {}) {
     });
   }
   for (const s of valuesOf(V.spools)) {
-    ev.push({ key: `spools:${s.id}`, table: 'spools', id: s.id, type: 'spool', date: s.created_at, title: `Bobine ajoutée · ${spoolLabel(s)}`, sub: `${fmtG(s.initial_weight_g)} · ${fmtEur(s.price)}`, amount: -toNum(s.price) });
+    ev.push({ key: `spools:${s.id}`, table: 'spools', id: s.id, type: 'spool', date: s.purchased_at ? `${s.purchased_at}T12:00:00` : s.created_at, title: `Bobine ajoutée · ${spoolLabel(s)}`, sub: `${fmtG(s.initial_weight_g)} · ${fmtEur(s.price)}`, amount: -toNum(s.price) });
   }
   for (const m of valuesOf(V.spool_movements)) {
     if (m.kind !== 'weigh') continue;

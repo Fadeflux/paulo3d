@@ -361,7 +361,7 @@ function backupReminder(V) {
 }
 async function downloadBackup() {
   const stampDay = toLocalInput().slice(0, 10); // date LOCALE : après minuit en France, pas celle de la veille (UTC)
-  const saved = await saveFile(`${SITE.id}-sauvegarde-${stampDay}.json`, exportJson(Store.V), 'application/json');
+  const saved = await saveFile(`${SITE.id}-${ui('sauvegarde')}-${stampDay}.json`, exportJson(Store.V), 'application/json');
   if (!saved) return;
   if (Sync.backend && Sync.backend.kind === 'supabase') {
     await Sync.enqueue('settings.save', { last_backup_at: new Date().toISOString() }, { wait: 0, silent: true });
@@ -395,10 +395,10 @@ Actions['export-open'] = () => {
     actions: {
       'x-json': () => downloadBackup(),
       'x-bilan': (el, e, m) => { m.close(); go('#/bilan'); },
-      'x-journal': () => saveFile(`${SITE.id}-journal-${stampDay}.csv`, exportCsvJournal(Store.V), 'text/csv;charset=utf-8'),
-      'x-sales': () => saveFile(`${SITE.id}-ventes-${stampDay}.csv`, exportCsvSales(Store.V), 'text/csv;charset=utf-8'),
-      'x-prod': () => saveFile(`${SITE.id}-productions-${stampDay}.csv`, exportCsvProductions(Store.V), 'text/csv;charset=utf-8'),
-      'x-spools': () => saveFile(`${SITE.id}-bobines-${stampDay}.csv`, exportCsvSpools(Store.V), 'text/csv;charset=utf-8'),
+      'x-journal': () => saveFile(`${SITE.id}-${ui('journal')}-${stampDay}.csv`, exportCsvJournal(Store.V), 'text/csv;charset=utf-8'),
+      'x-sales': () => saveFile(`${SITE.id}-${ui('ventes-export')}-${stampDay}.csv`, exportCsvSales(Store.V), 'text/csv;charset=utf-8'),
+      'x-prod': () => saveFile(`${SITE.id}-${ui('productions-export')}-${stampDay}.csv`, exportCsvProductions(Store.V), 'text/csv;charset=utf-8'),
+      'x-spools': () => saveFile(`${SITE.id}-${ui('bobines-export')}-${stampDay}.csv`, exportCsvSpools(Store.V), 'text/csv;charset=utf-8'),
     },
   });
 };

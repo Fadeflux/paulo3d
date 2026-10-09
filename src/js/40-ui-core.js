@@ -426,6 +426,10 @@ const App = {
       Store.subscribe(() => this.schedule());
       Sync.subscribe(() => this.updateChrome());
       window.addEventListener('hashchange', () => {
+        // brouillons des Paramètres (canaux de vente, méthode de prix) : on quitte la page sans
+        // enregistrer -> ils ne doivent pas survivre et faire croire que c'est enregistré
+        delete this.ui.channelsDraft;
+        delete this.ui.pricingDraft;
         this.route = parseHash();
         this.routeChanged = true;
         this.render();

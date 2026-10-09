@@ -4,6 +4,7 @@
 do $$ begin create role anon nologin noinherit; exception when duplicate_object then null; end $$;
 do $$ begin create role authenticated nologin noinherit; exception when duplicate_object then null; end $$;
 do $$ begin create role service_role nologin noinherit bypassrls; exception when duplicate_object then null; end $$;
+do $$ begin create role supabase_admin nologin noinherit bypassrls; exception when duplicate_object then null; end $$;
 do $$ begin create role authenticator login noinherit password 'authenticator-local'; exception when duplicate_object then null; end $$;
 grant anon, authenticated, service_role to authenticator;
 

@@ -121,63 +121,15 @@ const Boot = {
     App.start();
     Sync.start(backend);
     this.bindNotifier();
-    await this.importOldAddress();
   },
 
-  // ⚠️ (19/09) DÉMÉNAGEMENT fadeflux.github.io -> Railway. Une action faite hors-ligne sur l'ancienne
-  // adresse et pas encore envoyée restait dans le stockage de CETTE adresse-là, que la nouvelle ne peut
-  // pas lire : elle était perdue sans un mot. La page de redirection (tools/railway-redirect.mjs ; avant : redirect-old.mjs) la lit et
-  // l'apporte dans le lien (#p3d-import=…) ; on la garde le temps de la connexion, puis on la remet dans
-  // la file de l'appareil (même compte seulement), d'où elle part comme n'importe quelle action.
+  // ⚠️ (09/10) Le déménagement est terminé. Le lien « #p3d-import=… » servait à rapatrier les actions
+  // restées sur l'ancienne adresse ; il injectait ces actions dans la file d'envoi SANS confirmation.
+  // N'importe qui pouvait donc envoyer un lien qui supprime des bobines ou change les réglages, avec la
+  // session de l'utilisateur. Le lien est désormais IGNORÉ et effacé de la barre d'adresse.
   captureOldAddressImport() {
-    const m = location.hash.match(/^#p3d-import=([A-Za-z0-9_-]+)$/);
-    if (!m) return;
-    try {
-      sessionStorage.setItem(LS.importEnAttente, m[1]);
-    } catch { /* stockage indisponible : rien à garder */ }
+    if (!/^#p3d-import=/.test(location.hash)) return;
     history.replaceState(null, '', `${location.pathname}${location.search}#/`);
-  },
-
-  async importOldAddress() {
-    let raw = null;
-    try {
-      raw = sessionStorage.getItem(LS.importEnAttente);
-    } catch {
-      return;
-    }
-    if (!raw) return;
-    let paquets = null;
-    try {
-      paquets = JSON.parse(b64urlDecode(raw));
-    } catch {
-      paquets = null;
-    }
-    if (!Array.isArray(paquets)) {
-      sessionStorage.removeItem(LS.importEnAttente);
-      return;
-    }
-    const mien = paquets.find((p) => p && p.db === Store.dbName);
-    if (!mien) {
-      toast("Des actions faites sur l'ancienne adresse appartiennent à un autre compte : connecte-toi avec ce compte pour les récupérer.", { tone: 'warn' });
-      return;
-    }
-    const deja = new Set(lsGet(LS.importes, []));
-    let n = 0;
-    for (const op of Array.isArray(mien.ops) ? mien.ops : []) {
-      if (!op || !op.id || !OPS[op.type] || deja.has(op.id) || Store.Q.some((o) => o.id === op.id)) continue;
-      if (await Store.putOp({ ...op, status: op.status === 'failed' ? 'failed' : 'pending', attempts: 0 })) {
-        deja.add(op.id);
-        n++;
-      }
-    }
-    lsSet(LS.importes, [...deja]);
-    sessionStorage.removeItem(LS.importEnAttente);
-    if (!n) return;
-    Store.rebuild();
-    Sync.emit();
-    toast(n === 1 ? "1 action faite sur l'ancienne adresse a été récupérée : elle part maintenant."
-      : `${n} actions faites sur l'ancienne adresse ont été récupérées : elles partent maintenant.`, { tone: 'ok' });
-    Sync.kick();
   },
 
   async startDemo() {

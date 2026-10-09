@@ -331,7 +331,9 @@ const OPS = {
     done: (S, p) => S.production_stock.has(p.id),
     validate(V, p) {
       if (!isPieceCount(p.quantity)) return new OpError('P3D09', `Quantité invalide : ${PIECES_ERROR}`);
-      if (!String(p.item_name || '').trim()) return new OpError('P3D09', 'Nom de pièce manquant.');
+      if (!itemKey(p.item_name)) return new OpError('P3D09', 'Nom de pièce manquant.');
+      if ([...itemKey(p.item_name)].length > 120) return new OpError('P3D09', 'Nom de pièce trop long (120 caractères au plus).');
+      if (!isMoney(p.unit_cost)) return new OpError('P3D09', 'Coût invalide.');
       return null;
     },
     apply(V, p, ctx) {
@@ -379,7 +381,8 @@ const OPS = {
       if (o && o.status === 'cancelled') return new OpError('P3D11', 'Cette commande est annulée : remets-la « à faire » avant de la livrer.');
       for (const i of p.items) {
         if (!isPieceCount(i.quantity)) return new OpError('P3D09', `Quantité invalide pour « ${String(i.item_name || '').trim()} » : ${PIECES_ERROR}`);
-        if (toNum(i.unit_price) < 0) return new OpError('P3D09', 'Prix invalide.');
+        if (!isMoney(i.unit_price)) return new OpError('P3D09', 'Prix invalide.');
+        if (!itemKey(i.item_name) || [...itemKey(i.item_name)].length > 120) return new OpError('P3D09', 'Indique la pièce vendue (120 caractères au plus).');
       }
       const reqs = p.items.filter((i) => i.from_stock !== false);
       const res = simulateFifo(V, reqs);
@@ -492,6 +495,12 @@ function buildView(S, Q, ctx) {
     V.pendingCount++;
     try {
       if (def.done && def.done(S, op.payload)) continue;
+      const err = def.validate ? def.validate(V, op.payload) : null;
+      if (err) {
+        // la base la refusera : on ne l'invente pas à l'écran (ni stock, ni marge imaginaires)
+        V.pendingInvalid = (V.pendingInvalid || 0) + 1;
+        continue;
+      }
       def.apply(V, op.payload, ctx);
       for (const k of def.keys(op.payload, ctx)) V.pending.add(k);
     } catch (e) {
@@ -640,20 +649,34 @@ const Store = {
         },
       });
       this.volatile = false;
-      const lastPull = {};
-      for (const t of TABLES) {
-        const rows = await IDB.get(this.db, `snap:${t}`);
-        if (Array.isArray(rows)) for (const r of rows) this.S[t].set(r[PK(t)], normalizeRow(t, r));
-        const pos = await IDB.get(this.db, `pull:${t}`);
-        if (pos) lastPull[t] = pos;
-      }
-      // ancienne file (un seul tableau) → une entrée par action
-      const legacy = await IDB.get(this.db, 'outbox');
+      // ⚠️ La FILE d'abord : une copie locale abîmée ne doit jamais faire disparaître des actions pas
+      // encore envoyées (elles restaient écrites sur l'appareil, invisibles, avec un badge « Synchronisé »).
+      const legacy = await IDB.get(this.db, 'outbox'); // ancienne file (un seul tableau) → une entrée par action
       if (Array.isArray(legacy)) {
         await IDB.setMany(this.db, legacy.map((op, k) => [`op:${op.id}`, { ...op, seq: op.seq || k + 1 }]));
         await IDB.delMany(this.db, ['outbox']);
       }
       await this.reloadQueue();
+      const lastPull = {};
+      for (const t of TABLES) {
+        // chaque table est protégée séparément : une table illisible est relue à la prochaine
+        // synchronisation, les autres et la file restent intactes
+        try {
+          const rows = await IDB.get(this.db, `snap:${t}`);
+          if (Array.isArray(rows)) {
+            for (const r of rows) {
+              if (!r || r[PK(t)] == null) continue;
+              this.S[t].set(r[PK(t)], normalizeRow(t, r));
+            }
+          }
+          const pos = await IDB.get(this.db, `pull:${t}`);
+          if (pos) lastPull[t] = pos;
+        } catch (e) {
+          console.warn(`[${SITE.id}] copie locale illisible (${t}) : relue depuis la base`, e);
+          this.S[t].clear();
+          delete lastPull[t];
+        }
+      }
       const meta = (await IDB.get(this.db, 'meta')) || {};
       // anciennes copies : repères dans « meta » (seulement pour les tables qui n'ont pas encore le leur)
       this.meta = { ...this.meta, ...meta, lastPull: { ...(meta.lastPull || {}), ...lastPull } };
